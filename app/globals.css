@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+@layer base {
+  * {
+    @apply border-jarvis-border;
+  }
+
+  body {
+    @apply bg-jarvis-dark text-white antialiased;
+    font-family: "Inter", system-ui, sans-serif;
+  }
+
+  ::selection {
+    background: rgba(0, 212, 255, 0.3);
+  }
+}
+
+/* ── Scrollbar ──────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.3);
+}
+
+/* ── Jarvis Effects ─────────────────────────────── */
+
+@layer utilities {
+  .jarvis-glow {
+    box-shadow:
+      0 0 15px rgba(0, 212, 255, 0.08),
+      0 0 30px rgba(0, 212, 255, 0.04);
+  }
+
+  .jarvis-glow-strong {
+    box-shadow:
+      0 0 20px rgba(0, 212, 255, 0.15),
+      0 0 50px rgba(0, 212, 255, 0.08);
+  }
+
+  .jarvis-card {
+    @apply rounded-lg border border-jarvis-border bg-jarvis-surface p-5;
+  }
+
+  .jarvis-btn-primary {
+    @apply inline-flex items-center gap-2 rounded-md bg-jarvis-blue/10 px-4 py-2
+      text-sm font-medium text-jarvis-blue transition-all
+      hover:bg-jarvis-blue/20 active:scale-[0.98];
+  }
+
+  .jarvis-btn-danger {
+    @apply inline-flex items-center gap-2 rounded-md bg-jarvis-danger/10 px-4 py-2
+      text-sm font-medium text-jarvis-danger transition-all
+      hover:bg-jarvis-danger/20 active:scale-[0.98];
+  }
+
+  .jarvis-btn-ghost {
+    @apply inline-flex items-center gap-2 rounded-md px-4 py-2
+      text-sm font-medium text-jarvis-muted transition-all
+      hover:bg-white/5 hover:text-white active:scale-[0.98];
+  }
+
+  .jarvis-input {
+    @apply w-full rounded-md border border-jarvis-border bg-jarvis-dark px-3 py-2
+      text-sm text-white placeholder:text-jarvis-muted
+      focus:border-jarvis-blue/50 focus:outline-none focus:ring-1 focus:ring-jarvis-blue/30;
+  }
+}
+
+/* ── Arc Reactor Pulse ──────────────────────────── */
+
+@keyframes arc-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 8px rgba(0, 212, 255, 0.4),
+      0 0 16px rgba(0, 212, 255, 0.15);
+  }
+  50% {
+    box-shadow:
+      0 0 16px rgba(0, 212, 255, 0.6),
+      0 0 32px rgba(0, 212, 255, 0.25);
+  }
+}
+
+.arc-reactor {
+  animation: arc-pulse 2s ease-in-out infinite;
+}
+
+/* ── Status Dot ─────────────────────────────────── */
+
+@keyframes status-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.status-dot {
+  @apply inline-block h-2 w-2 rounded-full;
+}
+
+.status-dot-active {
+  @apply bg-jarvis-success;
+  animation: status-blink 1.5s ease-in-out infinite;
+}
+
+.status-dot-pending {
+  @apply bg-jarvis-gold;
+  animation: status-blink 1.5s ease-in-out infinite;
+}
+
+.status-dot-error {
+  @apply bg-jarvis-danger;
+}
