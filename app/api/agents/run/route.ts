@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { startCampaignRun, cleanup } from "@/lib/agents/jarvis-graph";
+import { canProcessLeads, incrementLeadsUsed } from "@/lib/subscription";
 import type { LeadData } from "@/lib/agents/state";
 
 export const runtime = "nodejs";
@@ -51,6 +52,16 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+
+  const usageCheck = await canProcessLeads(user.id, rawLeads.length);
+  if (!usageCheck.allowed) {
+    return NextResponse.json(
+      { error: usageCheck.reason },
+      { status: 403 }
+    );
+  }
+
+  await incrementLeadsUsed(user.id, rawLeads.length);
 
   const leads: LeadData[] = rawLeads.map((l) => ({
     id: l.id,

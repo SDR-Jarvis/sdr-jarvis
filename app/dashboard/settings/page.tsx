@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   Save,
@@ -12,17 +13,24 @@ import {
   CheckCircle,
   Copy,
   ExternalLink,
+  CreditCard,
 } from "lucide-react";
+import { BillingTab } from "./billing-tab";
 
-type Tab = "profile" | "domain";
+type Tab = "profile" | "domain" | "billing";
 
 export default function SettingsPage() {
   const supabase = createClient();
+  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [tab, setTab] = useState<Tab>("profile");
+
+  const initialTab = (searchParams.get("tab") as Tab) ?? "profile";
+  const [tab, setTab] = useState<Tab>(
+    ["profile", "billing", "domain"].includes(initialTab) ? initialTab : "profile"
+  );
 
   const [fullName, setFullName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -113,6 +121,12 @@ export default function SettingsPage() {
           onClick={() => setTab("profile")}
           icon={User}
           label="Profile & Tone"
+        />
+        <TabButton
+          active={tab === "billing"}
+          onClick={() => setTab("billing")}
+          icon={CreditCard}
+          label="Billing"
         />
         <TabButton
           active={tab === "domain"}
@@ -294,6 +308,8 @@ export default function SettingsPage() {
           </div>
         </>
       )}
+
+      {tab === "billing" && <BillingTab />}
 
       {tab === "domain" && <DomainSetupGuide />}
     </div>

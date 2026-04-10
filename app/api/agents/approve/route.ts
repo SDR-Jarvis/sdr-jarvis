@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { resumeAfterApproval } from "@/lib/agents/jarvis-graph";
 import { sendEmail } from "@/lib/agents/tools";
 import { logger } from "@/lib/logger";
+import { canSendEmail, incrementEmailsSent } from "@/lib/subscription";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -107,6 +108,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const emailCheck = await canSendEmail(user.id);
+  if (!emailCheck.allowed) {
+    return NextResponse.json(
+      { error: emailCheck.reason },
+      { status: 403 }
+    );
+  }
+
   logger.step("approval", `Sending approved email to ${lead.email}`);
 
   // If edited, update the approval and interaction records
@@ -173,6 +182,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (result.success) {
+    await incrementEmailsSent(user.id);
     logger.success("approval", `Email sent to ${lead.email}`);
   } else {
     logger.error("approval", `Send failed: ${result.error}`);
