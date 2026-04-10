@@ -280,66 +280,18 @@ export async function sendEmail(params: {
 }
 
 // ════════════════════════════════════════════════════
-// GOOGLE CALENDAR (lazy-loaded)
+// GOOGLE CALENDAR (disabled — enable when OAuth is configured)
 // ════════════════════════════════════════════════════
 
-async function getCalendarClient(accessToken: string) {
-  const { google } = await import("googleapis");
-  const auth = new google.auth.OAuth2();
-  auth.setCredentials({ access_token: accessToken });
-  return google.calendar({ version: "v3", auth });
-}
-
-export async function getAvailableSlots(params: {
+export async function getAvailableSlots(_params: {
   accessToken: string;
   daysAhead?: number;
 }): Promise<{ start: string; end: string }[]> {
-  const cal = await getCalendarClient(params.accessToken);
-  const now = new Date();
-  const future = new Date();
-  future.setDate(future.getDate() + (params.daysAhead ?? 7));
-
-  const { data } = await cal.freebusy.query({
-    requestBody: {
-      timeMin: now.toISOString(),
-      timeMax: future.toISOString(),
-      items: [{ id: "primary" }],
-    },
-  });
-
-  const busy = data.calendars?.primary?.busy ?? [];
-  const slots: { start: string; end: string }[] = [];
-
-  for (let d = 0; d < (params.daysAhead ?? 7); d++) {
-    const day = new Date(now);
-    day.setDate(day.getDate() + d);
-    if (day.getDay() === 0 || day.getDay() === 6) continue;
-
-    for (let hour = 9; hour < 17; hour++) {
-      const slotStart = new Date(day);
-      slotStart.setHours(hour, 0, 0, 0);
-      const slotEnd = new Date(slotStart);
-      slotEnd.setMinutes(30);
-
-      const isBusy = busy.some((b) => {
-        const bStart = new Date(b.start!);
-        const bEnd = new Date(b.end!);
-        return slotStart < bEnd && slotEnd > bStart;
-      });
-
-      if (!isBusy) {
-        slots.push({
-          start: slotStart.toISOString(),
-          end: slotEnd.toISOString(),
-        });
-      }
-    }
-  }
-
-  return slots.slice(0, 10);
+  logger.warn("calendar", "Google Calendar not configured yet");
+  return [];
 }
 
-export async function createCalendarEvent(params: {
+export async function createCalendarEvent(_params: {
   accessToken: string;
   summary: string;
   description: string;
@@ -347,23 +299,5 @@ export async function createCalendarEvent(params: {
   endTime: string;
   attendeeEmail: string;
 }): Promise<{ success: boolean; eventId?: string; error?: string }> {
-  try {
-    const cal = await getCalendarClient(params.accessToken);
-    const { data } = await cal.events.insert({
-      calendarId: "primary",
-      requestBody: {
-        summary: params.summary,
-        description: params.description,
-        start: { dateTime: params.startTime },
-        end: { dateTime: params.endTime },
-        attendees: [{ email: params.attendeeEmail }],
-      },
-    });
-    return { success: true, eventId: data.id ?? undefined };
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
+  return { success: false, error: "Google Calendar not configured yet" };
 }
