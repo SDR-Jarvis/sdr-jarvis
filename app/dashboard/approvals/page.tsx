@@ -4,6 +4,25 @@ import { CheckCircle, Clock, Mail, Linkedin } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils";
 import { ApprovalActions } from "../approval-actions";
 
+interface ApprovalRecord {
+  id: string;
+  status: string;
+  preview_subject: string;
+  preview_body: string;
+  channel: string;
+  agent_notes: string | null;
+  reviewed_at: string | null;
+  leads: {
+    first_name: string;
+    last_name: string;
+    company: string | null;
+    email: string | null;
+    title: string | null;
+    linkedin_url: string | null;
+  };
+  campaigns: { name: string } | null;
+}
+
 export default async function ApprovalsPage() {
   const supabase = await createClient();
   const {
@@ -20,8 +39,9 @@ export default async function ApprovalsPage() {
     .order("created_at", { ascending: false })
     .limit(50);
 
-  const pending = approvals?.filter((a) => a.status === "pending") ?? [];
-  const reviewed = approvals?.filter((a) => a.status !== "pending") ?? [];
+  const allApprovals = (approvals ?? []) as unknown as ApprovalRecord[];
+  const pending = allApprovals.filter((a) => a.status === "pending");
+  const reviewed = allApprovals.filter((a) => a.status !== "pending");
 
   return (
     <div className="space-y-8">
@@ -66,11 +86,7 @@ export default async function ApprovalsPage() {
           </h2>
           <div className="space-y-2">
             {reviewed.map((approval) => {
-              const lead = approval.leads as unknown as {
-                first_name: string;
-                last_name: string;
-                company: string | null;
-              };
+              const lead = approval.leads;
               return (
                 <div
                   key={approval.id}
@@ -105,24 +121,12 @@ export default async function ApprovalsPage() {
   );
 }
 
-function ApprovalCard({
-  approval,
-}: {
-  approval: Record<string, unknown>;
-}) {
-  const lead = approval.leads as unknown as {
-    first_name: string;
-    last_name: string;
-    company: string | null;
-    email: string | null;
-    title: string | null;
-    linkedin_url: string | null;
-  };
-  const campaign = approval.campaigns as unknown as { name: string } | null;
+function ApprovalCard({ approval }: { approval: ApprovalRecord }) {
+  const lead = approval.leads;
+  const campaign = approval.campaigns;
 
   return (
     <div className="jarvis-card jarvis-glow space-y-4">
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -152,7 +156,7 @@ function ApprovalCard({
         <div className="text-right">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-jarvis-gold/10 px-2 py-0.5 text-[10px] font-medium text-jarvis-gold">
             <span className="status-dot status-dot-pending" />
-            {(approval.channel as string) ?? "email"}
+            {approval.channel ?? "email"}
           </span>
           {campaign && (
             <p className="mt-1 text-[10px] text-jarvis-muted/50">
@@ -162,28 +166,25 @@ function ApprovalCard({
         </div>
       </div>
 
-      {/* Message Preview */}
       <div className="rounded-md border border-jarvis-border bg-jarvis-dark p-4">
         <p className="text-sm font-medium text-jarvis-blue">
-          {approval.preview_subject as string}
+          {approval.preview_subject}
         </p>
         <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-jarvis-muted">
-          {approval.preview_body as string}
+          {approval.preview_body}
         </p>
       </div>
 
-      {/* Agent Notes */}
       {approval.agent_notes && (
         <p className="rounded-md bg-jarvis-blue/5 px-3 py-2 text-xs italic text-jarvis-blue/70">
-          Jarvis: {approval.agent_notes as string}
+          Jarvis: {approval.agent_notes}
         </p>
       )}
 
-      {/* Actions */}
       <ApprovalActions
-        approvalId={approval.id as string}
-        initialSubject={approval.preview_subject as string}
-        initialBody={approval.preview_body as string}
+        approvalId={approval.id}
+        initialSubject={approval.preview_subject}
+        initialBody={approval.preview_body}
       />
     </div>
   );

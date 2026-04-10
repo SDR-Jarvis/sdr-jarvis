@@ -1,10 +1,9 @@
-import Stripe from "stripe";
+// Stripe integration is disabled for now.
+// This file retains plan definitions so the rest of the app can reference them.
+// When Stripe is enabled, uncomment the Stripe SDK import and client below.
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("Missing STRIPE_SECRET_KEY environment variable");
-}
-
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+// import Stripe from "stripe";
+// export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export interface PlanConfig {
   name: string;
@@ -19,11 +18,11 @@ export const PLANS: Record<string, PlanConfig> = {
   free: {
     name: "Free",
     price: 0,
-    leadsPerMonth: 25,
-    emailsPerMonth: 25,
+    leadsPerMonth: 9999,
+    emailsPerMonth: 9999,
     features: [
-      "25 leads / month",
-      "25 emails / month",
+      "Unlimited leads (beta)",
+      "Unlimited emails (beta)",
       "AI research & drafting",
       "Human approval flow",
       "Basic analytics",
@@ -44,7 +43,7 @@ export const PLANS: Record<string, PlanConfig> = {
       "Priority support",
       "Custom sending domain",
     ],
-    stripePriceId: process.env.STRIPE_STARTER_PRICE_ID ?? "",
+    stripePriceId: null,
   },
   growth: {
     name: "Growth",
@@ -60,7 +59,7 @@ export const PLANS: Record<string, PlanConfig> = {
       "Slack notifications",
       "Dedicated onboarding",
     ],
-    stripePriceId: process.env.STRIPE_GROWTH_PRICE_ID ?? "",
+    stripePriceId: null,
   },
 };
 

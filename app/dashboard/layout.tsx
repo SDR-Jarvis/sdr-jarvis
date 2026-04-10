@@ -11,7 +11,6 @@ import {
   Settings,
   Zap,
   LogOut,
-  CreditCard,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -80,13 +79,6 @@ export default function DashboardLayout({
 
         {/* Bottom */}
         <div className="space-y-1 border-t border-jarvis-border px-3 py-4">
-          <Link
-            href="/dashboard/settings?tab=billing"
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-jarvis-muted hover:bg-white/5 hover:text-white transition-colors"
-          >
-            <CreditCard className="h-4 w-4" />
-            Billing
-          </Link>
           <Link
             href="/dashboard/settings"
             className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-jarvis-muted hover:bg-white/5 hover:text-white transition-colors"

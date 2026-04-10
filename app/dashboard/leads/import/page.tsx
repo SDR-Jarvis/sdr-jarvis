@@ -346,7 +346,7 @@ export default function ImportLeadsPage() {
                 <div key={field.key} className="flex items-center gap-3">
                   <span className="w-32 text-sm text-jarvis-muted">
                     {field.label}
-                    {field.required && (
+                    {"required" in field && field.required && (
                       <span className="text-jarvis-danger"> *</span>
                     )}
                   </span>

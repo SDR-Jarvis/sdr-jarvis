@@ -180,9 +180,9 @@ export default async function CampaignDetailPage({
                   {i}
                 </span>
               ))}
-            {icp.companySize && (
+            {typeof icp.companySize === "string" && (
               <span className="rounded-full bg-white/5 px-2.5 py-1 text-jarvis-muted">
-                {icp.companySize as string} employees
+                {icp.companySize} employees
               </span>
             )}
           </div>

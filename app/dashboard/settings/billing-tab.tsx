@@ -5,9 +5,8 @@ import {
   CreditCard,
   Check,
   Loader2,
-  ExternalLink,
-  AlertTriangle,
   Sparkles,
+  Clock,
 } from "lucide-react";
 
 interface SubscriptionData {
@@ -17,8 +16,6 @@ interface SubscriptionData {
   emailsSent: number;
   leadsLimit: number;
   emailsLimit: number;
-  cancelAtPeriodEnd: boolean;
-  currentPeriodEnd: string | null;
 }
 
 interface PlanDisplay {
@@ -32,11 +29,11 @@ interface PlanDisplay {
 const PLAN_DISPLAY: PlanDisplay[] = [
   {
     id: "free",
-    name: "Free",
+    name: "Free (Beta)",
     price: 0,
     features: [
-      "25 leads / month",
-      "25 emails / month",
+      "Unlimited leads (beta)",
+      "Unlimited emails (beta)",
       "AI research & drafting",
       "Human approval flow",
       "Basic analytics",
@@ -76,8 +73,6 @@ const PLAN_DISPLAY: PlanDisplay[] = [
 export function BillingTab() {
   const [sub, setSub] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
-  const [portalLoading, setPortalLoading] = useState(false);
 
   useEffect(() => {
     fetch("/api/billing/subscription")
@@ -87,38 +82,6 @@ export function BillingTab() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function handleCheckout(planId: string) {
-    setCheckoutLoading(planId);
-    try {
-      const res = await fetch("/api/billing/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: planId }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    } catch (err) {
-      console.error(err);
-    }
-    setCheckoutLoading(null);
-  }
-
-  async function handlePortal() {
-    setPortalLoading(true);
-    try {
-      const res = await fetch("/api/billing/portal", { method: "POST" });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    } catch (err) {
-      console.error(err);
-    }
-    setPortalLoading(false);
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -127,87 +90,60 @@ export function BillingTab() {
     );
   }
 
-  const currentPlan = sub?.plan ?? "free";
-  const isActive = sub?.status === "active" || sub?.status === "trialing";
-
   return (
     <div className="space-y-6">
       {/* Current Plan Status */}
       <div className="jarvis-card">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-jarvis-muted">
-              <CreditCard className="h-4 w-4" />
-              Current Plan
-            </h2>
-            <div className="mt-3 flex items-center gap-3">
-              <span className="text-2xl font-bold text-white capitalize">
-                {currentPlan}
-              </span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
-                  isActive
-                    ? "bg-jarvis-success/10 text-jarvis-success"
-                    : "bg-jarvis-danger/10 text-jarvis-danger"
-                }`}
-              >
-                {sub?.status ?? "active"}
-              </span>
-            </div>
-            {sub?.cancelAtPeriodEnd && sub.currentPeriodEnd && (
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-jarvis-gold">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Cancels at end of period ({new Date(sub.currentPeriodEnd).toLocaleDateString()})
-              </p>
-            )}
-          </div>
-          {currentPlan !== "free" && (
-            <button
-              onClick={handlePortal}
-              disabled={portalLoading}
-              className="jarvis-btn-ghost text-xs"
-            >
-              {portalLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <ExternalLink className="h-3.5 w-3.5" />
-              )}
-              Manage Billing
-            </button>
-          )}
+        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-jarvis-muted">
+          <CreditCard className="h-4 w-4" />
+          Current Plan
+        </h2>
+        <div className="mt-3 flex items-center gap-3">
+          <span className="text-2xl font-bold text-white">
+            Free (Beta)
+          </span>
+          <span className="rounded-full bg-jarvis-success/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-jarvis-success">
+            active
+          </span>
         </div>
+        <p className="mt-2 text-sm text-jarvis-muted">
+          You&apos;re on the free beta — all features are unlocked with no limits while we&apos;re in early access.
+        </p>
 
         {/* Usage Meters */}
         <div className="mt-5 grid grid-cols-2 gap-4">
           <UsageMeter
             label="Leads"
             used={sub?.leadsUsed ?? 0}
-            limit={sub?.leadsLimit ?? 25}
+            limit={sub?.leadsLimit ?? 9999}
           />
           <UsageMeter
             label="Emails"
             used={sub?.emailsSent ?? 0}
-            limit={sub?.emailsLimit ?? 25}
+            limit={sub?.emailsLimit ?? 9999}
           />
         </div>
       </div>
 
-      {/* Plan Cards */}
+      {/* Upcoming Plans */}
       <div>
-        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-jarvis-muted">
-          {currentPlan === "free" ? "Upgrade Your Plan" : "Plans"}
-        </h3>
+        <div className="mb-4 flex items-center gap-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-jarvis-muted">
+            Plans
+          </h3>
+          <span className="rounded-full bg-jarvis-gold/10 px-2 py-0.5 text-[10px] font-medium text-jarvis-gold flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            Coming Soon
+          </span>
+        </div>
         <div className="grid grid-cols-3 gap-4">
           {PLAN_DISPLAY.map((plan) => {
-            const isCurrent = plan.id === currentPlan;
-            const isDowngrade =
-              PLAN_DISPLAY.findIndex((p) => p.id === currentPlan) >
-              PLAN_DISPLAY.findIndex((p) => p.id === plan.id);
+            const isCurrent = plan.id === "free";
 
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-lg border p-5 transition-colors ${
+                className={`relative rounded-lg border p-5 ${
                   plan.popular
                     ? "border-jarvis-blue/40 bg-jarvis-blue/[0.03]"
                     : "border-jarvis-border bg-jarvis-surface/20"
@@ -250,29 +186,10 @@ export function BillingTab() {
                   <div className="rounded-md bg-white/5 py-2 text-center text-xs font-medium text-jarvis-muted">
                     Current Plan
                   </div>
-                ) : isDowngrade ? (
-                  <button
-                    onClick={handlePortal}
-                    className="jarvis-btn-ghost w-full text-xs"
-                  >
-                    Manage Billing
-                  </button>
-                ) : plan.id === "free" ? null : (
-                  <button
-                    onClick={() => handleCheckout(plan.id)}
-                    disabled={checkoutLoading !== null}
-                    className={`w-full rounded-md px-4 py-2 text-xs font-semibold transition-all ${
-                      plan.popular
-                        ? "bg-jarvis-blue text-jarvis-dark hover:brightness-110"
-                        : "bg-white/10 text-white hover:bg-white/15"
-                    }`}
-                  >
-                    {checkoutLoading === plan.id ? (
-                      <Loader2 className="mx-auto h-4 w-4 animate-spin" />
-                    ) : (
-                      `Upgrade to ${plan.name}`
-                    )}
-                  </button>
+                ) : (
+                  <div className="rounded-md bg-white/5 py-2 text-center text-xs font-medium text-jarvis-muted/50">
+                    Available soon
+                  </div>
                 )}
               </div>
             );
@@ -292,35 +209,20 @@ function UsageMeter({
   used: number;
   limit: number;
 }) {
-  const pct = Math.min((used / limit) * 100, 100);
-  const isWarning = pct >= 80;
-  const isMaxed = pct >= 100;
+  const displayLimit = limit >= 9999 ? "∞" : limit.toLocaleString();
+  const pct = limit >= 9999 ? 0 : Math.min((used / limit) * 100, 100);
 
   return (
     <div className="rounded-md border border-jarvis-border/50 bg-jarvis-dark p-3">
       <div className="flex items-center justify-between text-xs">
         <span className="text-jarvis-muted">{label}</span>
-        <span
-          className={`font-mono font-medium ${
-            isMaxed
-              ? "text-jarvis-danger"
-              : isWarning
-                ? "text-jarvis-gold"
-                : "text-white"
-          }`}
-        >
-          {used.toLocaleString()} / {limit.toLocaleString()}
+        <span className="font-mono font-medium text-white">
+          {used.toLocaleString()} / {displayLimit}
         </span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/5">
         <div
-          className={`h-full rounded-full transition-all ${
-            isMaxed
-              ? "bg-jarvis-danger"
-              : isWarning
-                ? "bg-jarvis-gold"
-                : "bg-jarvis-blue"
-          }`}
+          className="h-full rounded-full bg-jarvis-blue transition-all"
           style={{ width: `${pct}%` }}
         />
       </div>

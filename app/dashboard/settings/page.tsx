@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -20,6 +20,14 @@ import { BillingTab } from "./billing-tab";
 type Tab = "profile" | "domain" | "billing";
 
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-jarvis-blue" /></div>}>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const supabase = createClient();
   const searchParams = useSearchParams();
 

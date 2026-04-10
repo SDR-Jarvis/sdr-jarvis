@@ -293,7 +293,7 @@ export async function sendEmail(params: {
       to: params.to,
       subject: params.subject,
       html: params.body.replace(/\n/g, "<br>"),
-      reply_to: params.replyTo || process.env.REPLY_TO_EMAIL,
+      replyTo: params.replyTo || process.env.REPLY_TO_EMAIL,
     });
 
     if (error) {
