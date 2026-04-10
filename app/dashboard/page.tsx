@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { getJarvisGreeting, formatRelativeTime } from "@/lib/utils";
 import { ApprovalActions } from "./approval-actions";
+import { OnboardingChecklist } from "./onboarding-checklist";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -90,6 +91,9 @@ export default async function DashboardPage() {
           </a>
         </div>
       </div>
+
+      {/* ── Onboarding Checklist ────────────────── */}
+      <OnboardingChecklist />
 
       {/* ── Metric Cards ────────────────────────── */}
       <div className="grid grid-cols-4 gap-4">
