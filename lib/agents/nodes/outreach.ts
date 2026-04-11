@@ -3,7 +3,7 @@ import { createLLMClient } from "@/lib/llm";
 import { logger } from "@/lib/logger";
 import type { JarvisStateType, DraftMessage } from "../state";
 
-const OUTREACH_PROMPT = `You write cold emails for B2B sales. You are exceptionally good at it because you follow these rules without exception:
+const INITIAL_OUTREACH_PROMPT = `You write cold emails for B2B sales. You are exceptionally good at it because you follow these rules without exception:
 
 FORMAT (non-negotiable):
 - 3 to 5 sentences total. Not 6. Not "a short paragraph." Three to five sentences.
@@ -31,6 +31,33 @@ Return ONLY valid JSON (no markdown, no explanation outside the JSON):
   "personalizationNotes": "One sentence: what research insight drove this angle and why it should resonate."
 }`;
 
+const FOLLOW_UP_PROMPT = `You write follow-up cold emails. This is step {STEP} of {TOTAL_STEPS} in a sequence.
+
+CRITICAL RULES:
+- This is a FOLLOW-UP, not a new cold email. Reference the previous email naturally.
+- Step 2: Light bump. 2-3 sentences max. "Floating this back up" energy. Add ONE new angle or insight not in the original.
+- Step 3+: Final touch. 2-3 sentences max. Graceful close. "Totally understand if timing isn't right" energy. Leave the door open.
+- NEVER re-introduce yourself or your company in detail.
+- NEVER guilt-trip ("I haven't heard back...", "Following up again...").
+- Subject line: "Re: {PREV_SUBJECT}" OR a fresh 3-5 word subject.
+
+PREVIOUS EMAIL:
+Subject: {PREV_SUBJECT}
+Body: {PREV_BODY}
+
+TONE:
+- Breezy, not needy. You're busy too.
+- One new value add or angle if possible.
+- Short. Really short. 2-3 sentences.
+
+Return ONLY valid JSON:
+{
+  "subject": "the subject line",
+  "body": "Hi [FirstName],\\n\\nThe follow-up body here.",
+  "channel": "email",
+  "personalizationNotes": "Why this follow-up angle should resonate."
+}`;
+
 export async function outreachNode(
   state: JarvisStateType
 ): Promise<Partial<JarvisStateType>> {
@@ -43,7 +70,14 @@ export async function outreachNode(
   }
 
   const name = `${lead.firstName} ${lead.lastName}`;
-  logger.step("outreach", `Drafting email for ${name} (score: ${research.score}/100)`);
+  const isFollowUp = state.sequenceStep > 1 && state.previousEmail;
+
+  logger.step(
+    "outreach",
+    isFollowUp
+      ? `Drafting follow-up step ${state.sequenceStep} for ${name}`
+      : `Drafting email for ${name} (score: ${research.score}/100)`
+  );
 
   const llm = createLLMClient({ temperature: 0.85, maxTokens: 600 });
 
@@ -63,9 +97,21 @@ export async function outreachNode(
     .filter(Boolean)
     .join("\n");
 
+  let systemPrompt: string;
+
+  if (isFollowUp && state.previousEmail) {
+    systemPrompt = FOLLOW_UP_PROMPT
+      .replace("{STEP}", String(state.sequenceStep))
+      .replace("{TOTAL_STEPS}", "3")
+      .replace(/\{PREV_SUBJECT\}/g, state.previousEmail.subject)
+      .replace("{PREV_BODY}", state.previousEmail.body);
+  } else {
+    systemPrompt = INITIAL_OUTREACH_PROMPT;
+  }
+
   try {
     const response = await llm.invoke([
-      { role: "system", content: OUTREACH_PROMPT },
+      { role: "system", content: systemPrompt },
       { role: "user", content: context },
     ]);
 
@@ -90,7 +136,7 @@ export async function outreachNode(
     if (sentenceCount > 7) {
       logger.warn("outreach", `Draft too long (${sentenceCount} sentences), asking for revision`);
       const revision = await llm.invoke([
-        { role: "system", content: OUTREACH_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: context },
         {
           role: "assistant",

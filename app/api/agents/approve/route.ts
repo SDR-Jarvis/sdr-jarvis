@@ -149,12 +149,21 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", approvalId);
 
+  // Fetch existing interaction metadata to preserve sequence_step
+  const { data: existingInteraction } = await serviceClient
+    .from("interactions")
+    .select("metadata, sequence_step")
+    .eq("id", approval.interaction_id)
+    .single();
+
+  const existingMeta = (existingInteraction?.metadata ?? {}) as Record<string, unknown>;
+
   await serviceClient
     .from("interactions")
     .update({
       status: result.success ? "sent" : "failed",
       sent_at: result.success ? new Date().toISOString() : null,
-      metadata: { messageId: result.messageId, error: result.error },
+      metadata: { ...existingMeta, messageId: result.messageId, error: result.error },
     })
     .eq("id", approval.interaction_id);
 

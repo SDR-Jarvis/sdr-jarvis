@@ -7,6 +7,7 @@ import {
   Send,
   Users,
   CheckCircle,
+  MessageSquare,
   BarChart3,
   Settings,
   Zap,
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/campaigns", label: "Campaigns", icon: Send },
   { href: "/dashboard/leads", label: "Leads", icon: Users },
   { href: "/dashboard/approvals", label: "Approvals", icon: CheckCircle },
+  { href: "/dashboard/replies", label: "Replies", icon: MessageSquare },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
 ];
 

@@ -32,6 +32,12 @@ export interface DraftMessage {
   personalizationNotes: string;
 }
 
+export interface PreviousEmail {
+  subject: string;
+  body: string;
+  sequenceStep: number;
+}
+
 // ── LangGraph State (Annotation) ──────────────────
 
 function messagesReducer(existing: BaseMessage[], incoming: BaseMessage[]) {
@@ -82,6 +88,16 @@ export const JarvisState = Annotation.Root({
   nextAgent: Annotation<string>({
     reducer: (_, y) => y,
     default: () => "supervisor",
+  }),
+
+  sequenceStep: Annotation<number>({
+    reducer: (_, y) => y,
+    default: () => 1,
+  }),
+
+  previousEmail: Annotation<PreviousEmail | null>({
+    reducer: (_, y) => y ?? null,
+    default: () => null,
   }),
 
   errors: Annotation<string[]>({
