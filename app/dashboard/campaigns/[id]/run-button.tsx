@@ -23,6 +23,7 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount }: Props) 
   const [error, setError] = useState("");
   const router = useRouter();
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const finalStateRef = useRef<RunState>("idle");
 
   function addLog(message: string) {
     const time = new Date().toLocaleTimeString("en-US", {
@@ -77,13 +78,15 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount }: Props) 
             if (event.type === "error") {
               setError(event.error);
               setState("error");
+              finalStateRef.current = "error";
               addLog(`Error: ${event.error}`);
               break;
             }
 
-            if (event.type === "paused") {
-              setState("paused");
-              addLog("Pipeline paused — waiting for your approval in the queue.");
+            if (event.type === "done" || event.type === "paused") {
+              setState("done");
+              finalStateRef.current = "done";
+              addLog("Pipeline complete — all leads processed. Check the Approvals page to review and send.");
               break;
             }
 
@@ -108,11 +111,10 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount }: Props) 
         }
       }
 
-      if (state !== "error") {
-        if (state !== "paused") {
-          setState("done");
-          addLog("Pipeline complete.");
-        }
+      if (finalStateRef.current !== "error" && finalStateRef.current !== "done") {
+        setState("done");
+        finalStateRef.current = "done";
+        addLog("Pipeline complete.");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

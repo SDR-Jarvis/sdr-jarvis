@@ -5,7 +5,7 @@ import { canProcessLeads, incrementLeadsUsed } from "@/lib/subscription";
 import type { LeadData } from "@/lib/agents/state";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /**
  * POST /api/agents/run
@@ -111,10 +111,20 @@ export async function POST(req: NextRequest) {
           controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
         }
 
-        // Graph paused (interrupt) or completed
+        // Graph completed — all leads processed
+        await supabase
+          .from("agent_runs")
+          .update({ status: "completed", current_node: "done" })
+          .eq("thread_id", threadId);
+
+        await supabase
+          .from("campaigns")
+          .update({ status: "active" })
+          .eq("id", campaignId);
+
         controller.enqueue(
           encoder.encode(
-            `data: ${JSON.stringify({ type: "paused", threadId })}\n\n`
+            `data: ${JSON.stringify({ type: "done", threadId })}\n\n`
           )
         );
       } catch (err) {
