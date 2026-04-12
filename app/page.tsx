@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import {
   Zap,
-  ArrowRight,
   Loader2,
   Target,
   Mail,
@@ -12,32 +12,90 @@ import {
   ShieldCheck,
   BarChart3,
   Clock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
+type AuthStep = "email" | "password";
+
 export default function LandingPage() {
+  const [step, setStep] = useState<AuthStep>("email");
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const supabase = createClient();
+  const router = useRouter();
 
-  async function handleLogin(e: React.FormEvent) {
+  function handleEmailContinue(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setError("");
+    setStep("password");
+  }
+
+  async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setSuccess("");
 
-    const { error: authError } = await supabase.auth.signInWithOtp({
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      setLoading(false);
+      return;
+    }
+
+    // Try sign in first
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      password,
     });
 
-    setLoading(false);
-    if (authError) {
-      setError(authError.message);
-    } else {
-      setSent(true);
+    if (!signInError) {
+      router.push("/dashboard");
+      return;
     }
+
+    // If "Invalid login credentials" — could be new user or wrong password
+    // Try sign up
+    if (signInError.message.includes("Invalid login")) {
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      setLoading(false);
+
+      if (signUpError) {
+        setError(signUpError.message);
+        return;
+      }
+
+      // Supabase may auto-confirm or require email confirmation
+      // Check if user is immediately signed in
+      if (signUpData.user && signUpData.session) {
+        router.push("/dashboard");
+        return;
+      }
+
+      // If email confirmation is required
+      if (signUpData.user && !signUpData.session) {
+        setSuccess("Account created! Check your email to confirm, then sign in with the same password.");
+        return;
+      }
+
+      // Fallback: user may already exist with different password
+      setError("Wrong password. If you forgot it, try a different one to create a new account.");
+      return;
+    }
+
+    // Other errors (rate limit, etc.)
+    setLoading(false);
+    setError(signInError.message);
   }
 
   return (
@@ -108,13 +166,13 @@ export default function LandingPage() {
             num={1}
             icon={Target}
             title="Define Your ICP"
-            description="Tell Jarvis who your ideal customers are. Upload a CSV of leads or describe your target market."
+            description="Tell Jarvis who your ideal customers are. Upload a CSV of leads or discover founders from Hacker News and Product Hunt."
           />
           <StepCard
             num={2}
             icon={Brain}
             title="Jarvis Researches & Drafts"
-            description="AI scrapes LinkedIn, company sites, and news to write personalized 3-5 sentence emails for each lead."
+            description="AI searches Google, LinkedIn, and company sites to write personalized 3-5 sentence emails for each lead."
           />
           <StepCard
             num={3}
@@ -134,7 +192,7 @@ export default function LandingPage() {
           <FeatureCard
             icon={Brain}
             title="Deep Prospect Research"
-            description="Playwright-powered scraping of LinkedIn, company websites, and recent news."
+            description="Google-powered scraping of LinkedIn, company websites, and recent news."
           />
           <FeatureCard
             icon={Mail}
@@ -153,8 +211,8 @@ export default function LandingPage() {
           />
           <FeatureCard
             icon={Target}
-            title="ICP Targeting"
-            description="Define your ideal customer once. Jarvis scores and prioritizes leads."
+            title="Lead Discovery"
+            description="Find founders from Hacker News, Product Hunt, and Indie Hackers in one click."
           />
           <FeatureCard
             icon={Clock}
@@ -172,28 +230,17 @@ export default function LandingPage() {
         <div className="jarvis-card jarvis-glow space-y-6">
           <div className="text-center">
             <h2 className="text-xl font-bold text-white">
-              {sent ? "Check your email, sir." : "Start Closing Deals"}
+              {step === "email" ? "Get Started" : `Hello, ${email.split("@")[0]}`}
             </h2>
-            {!sent && (
-              <p className="mt-1 text-sm text-jarvis-muted">
-                Free to start. No credit card required.
-              </p>
-            )}
+            <p className="mt-1 text-sm text-jarvis-muted">
+              {step === "email"
+                ? "Enter your email to sign in or create an account."
+                : "Set a password to secure your account. If you already have one, just enter it."}
+            </p>
           </div>
 
-          {sent ? (
-            <div className="space-y-3 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-jarvis-success/10">
-                <ArrowRight className="h-6 w-6 text-jarvis-success" />
-              </div>
-              <p className="text-sm text-jarvis-muted">
-                Magic link sent to{" "}
-                <span className="text-jarvis-blue">{email}</span>. Click it to
-                access the command center.
-              </p>
-            </div>
-          ) : (
-            <form onSubmit={handleLogin} className="space-y-4">
+          {step === "email" ? (
+            <form onSubmit={handleEmailContinue} className="space-y-4">
               <div>
                 <label
                   htmlFor="email"
@@ -209,11 +256,79 @@ export default function LandingPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="tony@starkindustries.com"
                   className="jarvis-input"
+                  autoFocus
                 />
+              </div>
+
+              <button
+                type="submit"
+                className="flex w-full items-center justify-center gap-2 rounded-md bg-jarvis-blue px-4 py-2.5 text-sm font-semibold text-jarvis-dark transition-all hover:brightness-110"
+              >
+                <Zap className="h-4 w-4" />
+                Continue
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handlePasswordSubmit} className="space-y-4">
+              <div className="flex items-center gap-2 rounded-md bg-jarvis-blue/5 border border-jarvis-blue/20 px-3 py-2 text-xs text-jarvis-blue">
+                <Mail className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{email}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep("email");
+                    setPassword("");
+                    setError("");
+                    setSuccess("");
+                  }}
+                  className="ml-auto shrink-0 text-jarvis-muted hover:text-white transition-colors"
+                >
+                  Change
+                </button>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="password"
+                  className="mb-1.5 block text-sm font-medium text-jarvis-muted"
+                >
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="At least 6 characters"
+                    className="jarvis-input pr-10"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-jarvis-muted hover:text-white transition-colors"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px] text-jarvis-muted/60">
+                  New here? Pick a password. Returning? Enter your existing one.
+                </p>
               </div>
 
               {error && (
                 <p className="text-sm text-jarvis-danger">{error}</p>
+              )}
+
+              {success && (
+                <p className="text-sm text-jarvis-success">{success}</p>
               )}
 
               <button
@@ -226,15 +341,14 @@ export default function LandingPage() {
                 ) : (
                   <Zap className="h-4 w-4" />
                 )}
-                {loading ? "Initializing…" : "Get Started Free"}
+                {loading ? "Initializing…" : "Sign In"}
               </button>
             </form>
           )}
         </div>
 
         <p className="mt-4 text-center text-xs text-jarvis-muted/60">
-          No password needed. Magic links — because even Jarvis hates
-          remembering passwords.
+          No magic links, no redirects. Just email and password.
         </p>
       </section>
 
