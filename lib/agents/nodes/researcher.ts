@@ -5,6 +5,8 @@ import {
   scrapeLinkedInProfile,
   scrapeWebPage,
   searchWeb,
+  searchLinkedIn,
+  researchCompany,
 } from "@/lib/agents/tools";
 import type { JarvisStateType, ResearchData } from "../state";
 
@@ -42,56 +44,51 @@ export async function researcherNode(
   logger.step("researcher", `Starting research on ${name}${lead.company ? ` (${lead.company})` : ""}`);
 
   const rawParts: string[] = [];
-  const timings: Record<string, number> = {};
 
-  // 1. LinkedIn
+  // ── 1. LinkedIn profile ──
   if (lead.linkedinUrl) {
-    const t0 = Date.now();
     const linkedin = await scrapeLinkedInProfile(lead.linkedinUrl);
-    timings.linkedin = Date.now() - t0;
-
     if (linkedin && !linkedin.startsWith("LinkedIn profile unavailable")) {
       rawParts.push(`=== LINKEDIN PROFILE ===\n${linkedin}`);
     } else {
-      logger.warn("researcher", `LinkedIn data weak for ${name}, supplementing with web search`);
-      const fallback = await searchWeb(`${name} linkedin ${lead.company ?? ""}`);
+      logger.info("researcher", `LinkedIn direct failed for ${name}, using Google`);
+      const fallback = await searchLinkedIn(name, lead.title, lead.company);
       rawParts.push(`=== LINKEDIN (via search) ===\n${fallback}`);
     }
   } else {
-    logger.info("researcher", `No LinkedIn URL for ${name}, using web search`);
-    const fallback = await searchWeb(`${name} ${lead.title ?? ""} ${lead.company ?? ""} linkedin`);
-    rawParts.push(`=== PERSON SEARCH ===\n${fallback}`);
+    logger.info("researcher", `No LinkedIn URL for ${name}, searching via Google`);
+    const fallback = await searchLinkedIn(name, lead.title, lead.company);
+    rawParts.push(`=== LINKEDIN SEARCH ===\n${fallback}`);
   }
 
-  // 2. Company website
-  if (lead.companyUrl) {
-    const t0 = Date.now();
-    const site = await scrapeWebPage(lead.companyUrl);
-    timings.company = Date.now() - t0;
-    rawParts.push(`=== COMPANY WEBSITE ===\n${site}`);
-  } else if (lead.company) {
-    logger.info("researcher", `No company URL, searching for ${lead.company}`);
-    const companySite = await searchWeb(`${lead.company} official website`);
-    rawParts.push(`=== COMPANY SEARCH ===\n${companySite}`);
-  }
-
-  // 3. Recent news / activity
+  // ── 2. Company deep research (parallel Google searches) ──
   if (lead.company) {
-    const t0 = Date.now();
-    const news = await searchWeb(`"${lead.company}" news OR announcement OR launch 2025 2026`);
-    timings.news = Date.now() - t0;
-    rawParts.push(`=== RECENT NEWS ===\n${news}`);
+    const companyData = await researchCompany(lead.company);
+
+    if (lead.companyUrl) {
+      const site = await scrapeWebPage(lead.companyUrl);
+      rawParts.push(`=== COMPANY WEBSITE ===\n${site}`);
+    } else {
+      rawParts.push(`=== COMPANY INFO ===\n${companyData.website}`);
+    }
+
+    rawParts.push(`=== FUNDING INFO ===\n${companyData.funding}`);
+    rawParts.push(`=== RECENT NEWS ===\n${companyData.news}`);
+    rawParts.push(`=== TECH STACK ===\n${companyData.techStack}`);
+  } else if (lead.companyUrl) {
+    const site = await scrapeWebPage(lead.companyUrl);
+    rawParts.push(`=== COMPANY WEBSITE ===\n${site}`);
   }
 
-  // 4. Person's recent activity
-  const personQuery = `"${lead.firstName} ${lead.lastName}" ${lead.company ?? ""} post OR talk OR article`;
+  // ── 3. Person's recent activity ──
+  const personQuery = `"${lead.firstName} ${lead.lastName}" ${lead.company ?? ""} post OR talk OR article OR announcement`;
   const personActivity = await searchWeb(personQuery);
   rawParts.push(`=== PERSON ACTIVITY ===\n${personActivity}`);
 
-  const totalResearchTime = Object.values(timings).reduce((a, b) => a + b, 0);
-  logger.info("researcher", `Raw research gathered in ${Math.round(totalResearchTime / 1000)}s — ${rawParts.length} sources`);
+  const sourcesCount = rawParts.length;
+  logger.info("researcher", `Raw research gathered — ${sourcesCount} source sections`);
 
-  // Synthesize with LLM
+  // ── Synthesize with LLM ──
   const llm = createLLMClient({ temperature: 0.2, maxTokens: 1200 });
   logger.step("researcher", `Synthesizing research for ${name}…`);
 

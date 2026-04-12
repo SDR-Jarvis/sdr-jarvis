@@ -25,12 +25,12 @@ class RateLimiter {
   }
 }
 
-const linkedInLimiter = new RateLimiter(4000, 3000);
+const googleLimiter = new RateLimiter(500, 500);
+const duckLimiter = new RateLimiter(2000, 2000);
 const webLimiter = new RateLimiter(1500, 1500);
-const searchLimiter = new RateLimiter(2000, 2000);
 
 // ════════════════════════════════════════════════════
-// FETCH-BASED SCRAPING (Vercel-compatible, no Playwright)
+// FETCH UTILITIES
 // ════════════════════════════════════════════════════
 
 const USER_AGENTS = [
@@ -122,44 +122,236 @@ async function withRetry<T>(
 }
 
 // ════════════════════════════════════════════════════
-// LINKEDIN SCRAPING (public profile via fetch)
+// GOOGLE CUSTOM SEARCH API
+// Free tier: 100 queries/day — structured JSON results
 // ════════════════════════════════════════════════════
 
-export async function scrapeLinkedInProfile(url: string): Promise<string> {
-  logger.step("researcher", `Scraping LinkedIn: ${url}`);
-  await linkedInLimiter.wait();
+interface GoogleSearchResult {
+  title: string;
+  link: string;
+  snippet: string;
+}
+
+function isGoogleConfigured(): boolean {
+  return !!(process.env.GOOGLE_SEARCH_API_KEY && process.env.GOOGLE_SEARCH_CX);
+}
+
+export async function searchGoogle(query: string, num = 5): Promise<GoogleSearchResult[]> {
+  if (!isGoogleConfigured()) return [];
+
+  await googleLimiter.wait();
+  logger.step("researcher", `Google search: "${query}"`);
+
+  try {
+    const params = new URLSearchParams({
+      key: process.env.GOOGLE_SEARCH_API_KEY!,
+      cx: process.env.GOOGLE_SEARCH_CX!,
+      q: query,
+      num: String(Math.min(num, 10)),
+    });
+
+    const res = await fetch(
+      `https://www.googleapis.com/customsearch/v1?${params}`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      logger.warn("researcher", `Google API ${res.status}: ${errText.slice(0, 200)}`);
+      return [];
+    }
+
+    const data = await res.json();
+    const items: GoogleSearchResult[] = (data.items ?? []).map(
+      (item: { title?: string; link?: string; snippet?: string }) => ({
+        title: item.title ?? "",
+        link: item.link ?? "",
+        snippet: item.snippet ?? "",
+      })
+    );
+
+    logger.success("researcher", `Google returned ${items.length} results for "${query}"`);
+    return items;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn("researcher", `Google search failed: ${msg}`);
+    return [];
+  }
+}
+
+function formatGoogleResults(results: GoogleSearchResult[]): string {
+  if (!results.length) return "";
+  return results
+    .map((r) => `${r.title}\n${r.snippet}\n${r.link}`)
+    .join("\n---\n");
+}
+
+// ════════════════════════════════════════════════════
+// SMART WEB SEARCH — Google first, DuckDuckGo fallback
+// ════════════════════════════════════════════════════
+
+export async function searchWeb(query: string): Promise<string> {
+  // Try Google first (structured, reliable)
+  const googleResults = await searchGoogle(query);
+  if (googleResults.length > 0) {
+    return formatGoogleResults(googleResults);
+  }
+
+  // Fallback to DuckDuckGo
+  return searchDuckDuckGo(query);
+}
+
+export async function searchDuckDuckGo(query: string): Promise<string> {
+  logger.step("researcher", `DuckDuckGo search: "${query}"`);
+  await duckLimiter.wait();
 
   return withRetry(
     async () => {
-      try {
-        const html = await fetchHtml(url);
+      const html = await fetchHtml(
+        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+      );
 
-        if (html.startsWith("HTTP ")) {
-          logger.warn("researcher", `LinkedIn returned ${html}`);
-          return `LinkedIn profile unavailable (${html}). Using web search as fallback.`;
-        }
+      const resultBlocks = html.match(/<div class="result__body">[\s\S]*?<\/div>\s*<\/div>/g) ?? [];
 
-        const { title } = extractMeta(html);
-        const text = extractTextFromHtml(html, 4000);
+      const results = resultBlocks
+        .slice(0, 6)
+        .map((block) => {
+          const titleMatch = block.match(/<a[^>]*class="result__a"[^>]*>([^<]*)<\/a>/i);
+          const snippetMatch = block.match(/<a[^>]*class="result__snippet"[^>]*>([^<]*)<\/a>/i);
+          const hrefMatch = block.match(/<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*/i);
 
-        const result = [
-          title && `Profile: ${title}`,
-          `\nPage extract:\n${text}`,
-        ]
-          .filter(Boolean)
-          .join("\n\n");
+          const title = titleMatch?.[1]?.replace(/<[^>]+>/g, "").trim() ?? "";
+          const snippet = snippetMatch?.[1]?.replace(/<[^>]+>/g, "").trim() ?? "";
+          const link = hrefMatch?.[1] ?? "";
 
-        logger.success("researcher", `LinkedIn scraped: ${result.slice(0, 80)}…`);
-        return result || "LinkedIn profile loaded but no structured data found.";
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        logger.warn("researcher", `LinkedIn scrape failed: ${msg}`);
-        return `LinkedIn profile unavailable: ${msg}. Using web search as fallback.`;
-      }
+          return `${title}\n${snippet}\n${link}`;
+        })
+        .filter((r) => r.length > 10)
+        .join("\n---\n");
+
+      const count = results ? results.split("---").length : 0;
+      logger.success("researcher", `DuckDuckGo returned ${count} results for "${query}"`);
+      return results || "No search results found.";
     },
-    1,
-    "LinkedIn scrape"
+    2,
+    "DuckDuckGo search"
   );
+}
+
+// ════════════════════════════════════════════════════
+// LINKEDIN RESEARCH — Google site-search (reliable)
+// Direct LinkedIn fetch almost always gets blocked.
+// Using Google to search site:linkedin.com works well.
+// ════════════════════════════════════════════════════
+
+export async function scrapeLinkedInProfile(linkedinUrl: string): Promise<string> {
+  logger.step("researcher", `Researching LinkedIn profile: ${linkedinUrl}`);
+
+  const parts: string[] = [];
+
+  // Strategy 1: Google search for this exact LinkedIn URL (best data)
+  const googleUrlResults = await searchGoogle(`site:linkedin.com "${linkedinUrl}"`);
+  if (googleUrlResults.length > 0) {
+    parts.push("=== LINKEDIN (via Google) ===");
+    for (const r of googleUrlResults) {
+      parts.push(`${r.title}\n${r.snippet}`);
+    }
+  }
+
+  // Strategy 2: Try direct fetch — sometimes works for public profiles
+  try {
+    await webLimiter.wait();
+    const html = await fetchHtml(linkedinUrl);
+    if (!html.startsWith("HTTP ") && html.length > 1000) {
+      const { title, description } = extractMeta(html);
+      const text = extractTextFromHtml(html, 3000);
+
+      // LinkedIn returns a login-wall page with ~200 chars of useful data at best
+      if (text.length > 300 && !text.includes("Sign in") && !text.includes("Join now")) {
+        parts.push("=== LINKEDIN DIRECT ===");
+        if (title) parts.push(`Profile: ${title}`);
+        if (description) parts.push(`Summary: ${description}`);
+        parts.push(text.slice(0, 2000));
+      } else if (title && title.length > 10) {
+        parts.push(`LinkedIn title: ${title}`);
+        if (description) parts.push(`LinkedIn meta: ${description}`);
+      }
+    }
+  } catch {
+    logger.info("researcher", "Direct LinkedIn fetch blocked (expected)");
+  }
+
+  if (parts.length === 0) {
+    return "LinkedIn profile unavailable via direct access. Using search fallback.";
+  }
+
+  const result = parts.join("\n\n");
+  logger.success("researcher", `LinkedIn research gathered: ${result.slice(0, 100)}…`);
+  return result;
+}
+
+// ════════════════════════════════════════════════════
+// GOOGLE-POWERED LINKEDIN SEARCH (by name)
+// When we don't have a LinkedIn URL, search for the person
+// ════════════════════════════════════════════════════
+
+export async function searchLinkedIn(
+  name: string,
+  title?: string | null,
+  company?: string | null
+): Promise<string> {
+  const query = [
+    `site:linkedin.com/in/`,
+    `"${name}"`,
+    company && `"${company}"`,
+    title && title,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  logger.step("researcher", `LinkedIn search via Google: ${query}`);
+
+  const googleResults = await searchGoogle(query, 3);
+  if (googleResults.length > 0) {
+    const formatted = googleResults
+      .map((r) => `${r.title}\n${r.snippet}\n${r.link}`)
+      .join("\n---\n");
+    logger.success("researcher", `Found ${googleResults.length} LinkedIn results`);
+    return formatted;
+  }
+
+  // Fall back to DuckDuckGo
+  const ddgResults = await searchDuckDuckGo(`${name} ${company ?? ""} site:linkedin.com`);
+  return ddgResults;
+}
+
+// ════════════════════════════════════════════════════
+// GOOGLE-POWERED COMPANY RESEARCH
+// Searches for company info, funding, news, tech stack
+// ════════════════════════════════════════════════════
+
+export async function researchCompany(companyName: string): Promise<{
+  website: string;
+  funding: string;
+  news: string;
+  techStack: string;
+}> {
+  logger.step("researcher", `Deep company research: ${companyName}`);
+
+  // Run multiple Google searches in parallel
+  const [siteResults, fundingResults, newsResults, techResults] = await Promise.all([
+    searchGoogle(`"${companyName}" official website about`, 3),
+    searchGoogle(`"${companyName}" funding round series raised crunchbase`, 3),
+    searchGoogle(`"${companyName}" news announcement launch 2025 2026`, 3),
+    searchGoogle(`"${companyName}" tech stack engineering blog technologies`, 3),
+  ]);
+
+  return {
+    website: formatGoogleResults(siteResults) || "No company website found.",
+    funding: formatGoogleResults(fundingResults) || "No funding info found.",
+    news: formatGoogleResults(newsResults) || "No recent news found.",
+    techStack: formatGoogleResults(techResults) || "No tech stack info found.",
+  };
 }
 
 // ════════════════════════════════════════════════════
@@ -194,47 +386,6 @@ export async function scrapeWebPage(url: string): Promise<string> {
     },
     1,
     "Web scrape"
-  );
-}
-
-// ════════════════════════════════════════════════════
-// WEB SEARCH (DuckDuckGo HTML)
-// ════════════════════════════════════════════════════
-
-export async function searchWeb(query: string): Promise<string> {
-  logger.step("researcher", `Searching: "${query}"`);
-  await searchLimiter.wait();
-
-  return withRetry(
-    async () => {
-      const html = await fetchHtml(
-        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
-      );
-
-      const resultBlocks = html.match(/<div class="result__body">[\s\S]*?<\/div>\s*<\/div>/g) ?? [];
-
-      const results = resultBlocks
-        .slice(0, 6)
-        .map((block) => {
-          const titleMatch = block.match(/<a[^>]*class="result__a"[^>]*>([^<]*)<\/a>/i);
-          const snippetMatch = block.match(/<a[^>]*class="result__snippet"[^>]*>([^<]*)<\/a>/i);
-          const hrefMatch = block.match(/<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*/i);
-
-          const title = titleMatch?.[1]?.replace(/<[^>]+>/g, "").trim() ?? "";
-          const snippet = snippetMatch?.[1]?.replace(/<[^>]+>/g, "").trim() ?? "";
-          const link = hrefMatch?.[1] ?? "";
-
-          return `${title}\n${snippet}\n${link}`;
-        })
-        .filter((r) => r.length > 10)
-        .join("\n---\n");
-
-      const count = results ? results.split("---").length : 0;
-      logger.success("researcher", `Search returned ${count} results for "${query}"`);
-      return results || "No search results found.";
-    },
-    2,
-    "Web search"
   );
 }
 
