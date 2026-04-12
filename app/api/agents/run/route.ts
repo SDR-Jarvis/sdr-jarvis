@@ -92,6 +92,10 @@ export async function POST(req: NextRequest) {
 
   // Stream graph events via SSE
   const encoder = new TextEncoder();
+  // Each lead needs ~5 graph steps (supervisor→researcher→supervisor→outreach→supervisor→gate→supervisor)
+  // Leads without email need 2 steps. Add buffer.
+  const recursionLimit = Math.max(leads.length * 6 + 10, 50);
+
   const stream = new ReadableStream({
     async start(controller) {
       try {
@@ -100,6 +104,7 @@ export async function POST(req: NextRequest) {
           campaignId,
           leads,
           threadId,
+          recursionLimit,
         });
 
         for await (const event of graphStream) {

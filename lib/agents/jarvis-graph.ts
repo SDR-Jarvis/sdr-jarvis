@@ -145,6 +145,7 @@ export async function startCampaignRun(params: {
   campaignId: string;
   leads: LeadData[];
   threadId?: string;
+  recursionLimit?: number;
 }) {
   const threadId = params.threadId ?? crypto.randomUUID();
 
@@ -164,6 +165,7 @@ export async function startCampaignRun(params: {
   const stream = await jarvisGraph.stream(initialState, {
     ...config,
     streamMode: "updates",
+    recursionLimit: params.recursionLimit ?? 50,
   });
 
   return { threadId, stream };
