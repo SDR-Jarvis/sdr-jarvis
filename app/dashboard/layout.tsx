@@ -12,6 +12,7 @@ import {
   Settings,
   Zap,
   LogOut,
+  Compass,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/campaigns", label: "Campaigns", icon: Send },
   { href: "/dashboard/leads", label: "Leads", icon: Users },
+  { href: "/dashboard/leads/discover", label: "Discover", icon: Compass },
   { href: "/dashboard/approvals", label: "Approvals", icon: CheckCircle },
   { href: "/dashboard/replies", label: "Replies", icon: MessageSquare },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
