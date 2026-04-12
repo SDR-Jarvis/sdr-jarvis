@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Linkedin, Building2, User, MessageSquare, Loader2, X } from "lucide-react";
+import { Mail, Linkedin, Building2, User, MessageSquare, Loader2, X, Send } from "lucide-react";
 
 interface Lead {
   id: string;
@@ -157,12 +157,15 @@ export function CampaignLeadsTable({ leads }: { leads: Lead[] }) {
 function LogReplyModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const router = useRouter();
   const [replyContent, setReplyContent] = useState("");
+  const [autoSend, setAutoSend] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [autoSent, setAutoSent] = useState(false);
   const [result, setResult] = useState<{
     interestLevel: string;
     intent: string;
     suggestedAction: string;
     confidence: number;
+    draftReply: string | null;
   } | null>(null);
 
   async function handleSubmit() {
@@ -173,13 +176,14 @@ function LogReplyModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
       const res = await fetch("/api/replies/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: lead.id, replyContent }),
+        body: JSON.stringify({ leadId: lead.id, replyContent, autoSend }),
       });
 
       const data = await res.json();
 
       if (data.success && data.qualification) {
         setResult(data.qualification);
+        setAutoSent(data.autoSent ?? false);
       } else if (!res.ok) {
         alert(data.error ?? "Failed to log reply");
       }
@@ -217,6 +221,29 @@ function LogReplyModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
               className="jarvis-input resize-none text-sm"
               autoFocus
             />
+
+            <div className="flex items-center justify-between rounded-md bg-jarvis-dark p-3">
+              <div>
+                <p className="text-xs font-medium text-white">Auto-reply if Hot</p>
+                <p className="text-[10px] text-jarvis-muted">
+                  Jarvis will send a personalized reply automatically for hot leads
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAutoSend(!autoSend)}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  autoSend ? "bg-jarvis-blue" : "bg-jarvis-border"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    autoSend ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
             <div className="flex justify-end gap-3">
               <button
                 onClick={onClose}
@@ -284,6 +311,24 @@ function LogReplyModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
                 </span>
               </div>
             </div>
+
+            {autoSent && (
+              <div className="flex items-center gap-2 rounded-md bg-jarvis-success/10 p-3 text-xs font-medium text-jarvis-success">
+                <Send className="h-4 w-4" />
+                Jarvis auto-replied to {lead.name}!
+              </div>
+            )}
+
+            {result.draftReply && !autoSent && (
+              <div className="rounded-md border border-jarvis-blue/20 bg-jarvis-blue/5 p-3">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-jarvis-blue">
+                  Suggested Reply
+                </p>
+                <p className="text-xs leading-relaxed text-jarvis-muted">
+                  {result.draftReply}
+                </p>
+              </div>
+            )}
 
             <p className="text-xs text-jarvis-muted">
               Check the <span className="text-jarvis-blue">Replies</span> tab for full details and to take action.

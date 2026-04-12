@@ -10,6 +10,7 @@ import {
   Loader2,
   Edit3,
   X,
+  CheckCircle,
 } from "lucide-react";
 
 export function ReplyActions({
@@ -30,6 +31,7 @@ export function ReplyActions({
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
   const [showCompose, setShowCompose] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
   const [replyText, setReplyText] = useState(draftReply ?? "");
   const [replySubject, setReplySubject] = useState(
     originalSubject ? `Re: ${originalSubject}` : ""
@@ -37,6 +39,7 @@ export function ReplyActions({
 
   async function handleAction(action: string) {
     setLoading(action);
+    setSuccess(null);
 
     try {
       const res = await fetch("/api/replies/action", {
@@ -51,18 +54,78 @@ export function ReplyActions({
         }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        const data = await res.json();
         alert(data.error ?? "Action failed");
+        return;
       }
 
-      router.refresh();
+      const messages: Record<string, string> = {
+        book_meeting: "Meeting booked! Lead status updated.",
+        send_reply: "Reply sent successfully!",
+        follow_up_later: "Marked for follow-up.",
+        archive: "Lead archived.",
+      };
+      setSuccess(messages[action] ?? "Done!");
+
+      setTimeout(() => {
+        setSuccess(null);
+        router.refresh();
+      }, 2000);
     } catch {
       alert("Network error");
     } finally {
       setLoading(null);
       setShowCompose(false);
     }
+  }
+
+  async function handleAutoReply() {
+    if (!draftReply || !leadEmail) return;
+    setReplyText(draftReply);
+    setReplySubject(originalSubject ? `Re: ${originalSubject}` : "Re: Following up");
+    setLoading("auto_reply");
+
+    try {
+      const res = await fetch("/api/replies/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          replyId,
+          leadId,
+          action: "send_reply",
+          replySubject: originalSubject ? `Re: ${originalSubject}` : "Re: Following up",
+          replyBody: draftReply,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error ?? "Failed to send");
+        return;
+      }
+
+      setSuccess("Jarvis reply sent!");
+      setTimeout(() => {
+        setSuccess(null);
+        router.refresh();
+      }, 2000);
+    } catch {
+      alert("Network error");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  if (success) {
+    return (
+      <div className="flex items-center gap-2 rounded-md bg-jarvis-success/10 px-3 py-2 text-xs font-medium text-jarvis-success">
+        <CheckCircle className="h-4 w-4" />
+        {success}
+      </div>
+    );
   }
 
   return (
@@ -109,12 +172,23 @@ export function ReplyActions({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {draftReply && leadEmail && (
+          <button
+            onClick={handleAutoReply}
+            disabled={loading !== null}
+            className="flex items-center gap-1.5 rounded-md bg-jarvis-success/10 px-3 py-1.5 text-xs font-medium text-jarvis-success hover:bg-jarvis-success/20 transition-colors"
+          >
+            {loading === "auto_reply" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+            Send Jarvis Reply
+          </button>
+        )}
+
         {suggestedAction === "book_meeting" && (
           <button
             onClick={() => handleAction("book_meeting")}
             disabled={loading !== null}
-            className="flex items-center gap-1.5 rounded-md bg-jarvis-success/10 px-3 py-1.5 text-xs font-medium text-jarvis-success hover:bg-jarvis-success/20 transition-colors"
+            className="flex items-center gap-1.5 rounded-md bg-jarvis-blue/10 px-3 py-1.5 text-xs font-medium text-jarvis-blue hover:bg-jarvis-blue/20 transition-colors"
           >
             {loading === "book_meeting" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Calendar className="h-3 w-3" />}
             Book Meeting
@@ -127,10 +201,10 @@ export function ReplyActions({
             setReplyText(draftReply ?? "");
           }}
           disabled={loading !== null || !leadEmail}
-          className="flex items-center gap-1.5 rounded-md bg-jarvis-blue/10 px-3 py-1.5 text-xs font-medium text-jarvis-blue hover:bg-jarvis-blue/20 transition-colors"
+          className="flex items-center gap-1.5 rounded-md bg-white/5 px-3 py-1.5 text-xs font-medium text-jarvis-muted hover:bg-white/10 transition-colors"
         >
           <Edit3 className="h-3 w-3" />
-          Reply
+          Custom Reply
         </button>
 
         <button

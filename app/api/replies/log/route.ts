@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { qualifyReply } from "@/lib/agents/nodes/qualifier";
+import { sendEmail } from "@/lib/agents/tools";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -10,7 +11,8 @@ export const maxDuration = 60;
  * POST /api/replies/log
  *
  * Manually log a reply from a prospect and trigger the Qualifier agent.
- * Body: { leadId, replyContent }
+ * If autoSend is true and the lead is "hot", Jarvis sends the reply automatically.
+ * Body: { leadId, replyContent, autoSend? }
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -23,9 +25,10 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { leadId, replyContent } = body as {
+  const { leadId, replyContent, autoSend } = body as {
     leadId: string;
     replyContent: string;
+    autoSend?: boolean;
   };
 
   if (!leadId || !replyContent?.trim()) {
@@ -93,14 +96,69 @@ export async function POST(req: NextRequest) {
     leadCompany: lead.company,
   });
 
+  // Auto-send Jarvis's reply for hot leads if enabled
+  let autoSent = false;
+  if (
+    autoSend &&
+    qualification &&
+    qualification.draftReply &&
+    qualification.interestLevel === "hot" &&
+    lead.email
+  ) {
+    logger.step("replies", `Auto-sending Jarvis reply to ${lead.email}`);
+
+    const sendResult = await sendEmail({
+      to: lead.email,
+      subject: `Re: ${originalSubject}`,
+      body: qualification.draftReply,
+    });
+
+    if (sendResult.success) {
+      const serviceClient2 = createServiceClient();
+      await serviceClient2.from("interactions").insert({
+        lead_id: leadId,
+        campaign_id: campaignId,
+        user_id: user.id,
+        type: "email_outbound",
+        status: "sent",
+        subject: `Re: ${originalSubject}`,
+        body: qualification.draftReply,
+        metadata: { messageId: sendResult.messageId, auto_reply: true },
+        sent_at: new Date().toISOString(),
+      });
+
+      await serviceClient2
+        .from("leads")
+        .update({ status: "qualified", last_contacted_at: new Date().toISOString() })
+        .eq("id", leadId);
+
+      await serviceClient2.from("audit_log").insert({
+        user_id: user.id,
+        action: "auto_reply_sent",
+        resource_type: "lead",
+        resource_id: leadId,
+        details: {
+          to: lead.email,
+          lead_name: leadName,
+          interest_level: qualification.interestLevel,
+        },
+      });
+
+      autoSent = true;
+      logger.success("replies", `Auto-reply sent to ${lead.email}`);
+    }
+  }
+
   return NextResponse.json({
     success: true,
+    autoSent,
     qualification: qualification
       ? {
           interestLevel: qualification.interestLevel,
           intent: qualification.intent,
           suggestedAction: qualification.suggestedAction,
           confidence: qualification.confidence,
+          draftReply: qualification.draftReply,
         }
       : null,
   });
