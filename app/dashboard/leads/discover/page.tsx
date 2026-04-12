@@ -14,6 +14,8 @@ import {
   Zap,
   Globe,
   Filter,
+  AlertTriangle,
+  Mail,
 } from "lucide-react";
 
 interface DiscoveredLead {
@@ -24,6 +26,7 @@ interface DiscoveredLead {
   description: string;
   postedAt: string;
   score?: number;
+  email: string;
 }
 
 const SOURCES = [
@@ -85,12 +88,21 @@ export default function DiscoverLeadsPage() {
 
       const res = await fetch(`/api/leads/discover?${params}`);
       const data = await res.json();
-      setLeads(data.leads ?? []);
+      const rawLeads = (data.leads ?? []) as Omit<DiscoveredLead, "email">[];
+      setLeads(rawLeads.map((l) => ({ ...l, email: "" })));
     } catch {
       setLeads([]);
     } finally {
       setLoading(false);
     }
+  }
+
+  function updateEmail(index: number, email: string) {
+    setLeads((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], email };
+      return next;
+    });
   }
 
   function toggleSelect(index: number) {
@@ -102,6 +114,14 @@ export default function DiscoverLeadsPage() {
     });
   }
 
+  function selectAllWithEmail() {
+    const withEmail = new Set<number>();
+    leads.forEach((l, i) => {
+      if (l.email.trim() && l.email.includes("@")) withEmail.add(i);
+    });
+    setSelected(withEmail);
+  }
+
   function toggleAll() {
     if (selected.size === leads.length) {
       setSelected(new Set());
@@ -110,8 +130,13 @@ export default function DiscoverLeadsPage() {
     }
   }
 
+  const selectedWithEmail = Array.from(selected).filter(
+    (i) => leads[i]?.email?.trim() && leads[i].email.includes("@")
+  );
+  const selectedWithoutEmail = selected.size - selectedWithEmail.length;
+
   async function handleImport() {
-    if (selected.size === 0 || !campaignId) return;
+    if (selectedWithEmail.length === 0 || !campaignId) return;
 
     setImporting(true);
     setImportResult(null);
@@ -120,12 +145,12 @@ export default function DiscoverLeadsPage() {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      setImportResult("Not authenticated.");
+      setImportResult("Error: Not authenticated.");
       setImporting(false);
       return;
     }
 
-    const leadsToImport = Array.from(selected).map((i) => {
+    const leadsToImport = selectedWithEmail.map((i) => {
       const lead = leads[i];
       const nameParts = lead.name.split(" ");
       return {
@@ -137,7 +162,7 @@ export default function DiscoverLeadsPage() {
         company_url: lead.url.startsWith("http") ? lead.url : null,
         status: "new" as const,
         title: "Founder",
-        email: null,
+        email: lead.email.trim(),
         linkedin_url: null,
       };
     });
@@ -155,9 +180,17 @@ export default function DiscoverLeadsPage() {
     }
 
     const count = data?.length ?? 0;
-    setImportResult(`${count} lead${count !== 1 ? "s" : ""} imported to your campaign. Jarvis is ready to research them.`);
+    const skipped = selectedWithoutEmail;
+    let msg = `${count} lead${count !== 1 ? "s" : ""} imported to your campaign.`;
+    if (skipped > 0) msg += ` ${skipped} skipped (no email).`;
+    msg += " Run the pipeline to research and draft emails.";
+    setImportResult(msg);
     setSelected(new Set());
   }
+
+  const leadsWithEmailCount = leads.filter(
+    (l) => l.email.trim() && l.email.includes("@")
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -214,18 +247,40 @@ export default function DiscoverLeadsPage() {
         </div>
       </form>
 
+      {/* Email Tip Banner */}
+      {leads.length > 0 && leadsWithEmailCount === 0 && (
+        <div className="flex items-start gap-3 rounded-md border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-400">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-medium">These leads don&apos;t have email addresses yet.</p>
+            <p className="mt-0.5 text-xs text-amber-400/70">
+              Add emails in the Email column below before importing. You can find founder emails on their website, Twitter bio, or LinkedIn profile. Only leads with emails will be imported.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Import Controls */}
       {leads.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-jarvis-border bg-jarvis-surface px-4 py-3">
           <span className="text-sm text-jarvis-muted">
-            {selected.size} of {leads.length} selected
+            {selected.size} selected
+            {selectedWithEmail.length > 0 && (
+              <span className="text-jarvis-success"> ({selectedWithEmail.length} with email)</span>
+            )}
+            {selectedWithoutEmail > 0 && (
+              <span className="text-amber-400"> ({selectedWithoutEmail} missing email)</span>
+            )}
           </span>
-          <button
-            onClick={toggleAll}
-            className="jarvis-btn-ghost text-xs"
-          >
+          <button onClick={toggleAll} className="jarvis-btn-ghost text-xs">
             {selected.size === leads.length ? "Deselect all" : "Select all"}
           </button>
+          {leadsWithEmailCount > 0 && (
+            <button onClick={selectAllWithEmail} className="jarvis-btn-ghost text-xs">
+              <Mail className="h-3 w-3" />
+              Select all with email
+            </button>
+          )}
 
           <div className="flex-1" />
 
@@ -244,15 +299,22 @@ export default function DiscoverLeadsPage() {
               </select>
               <button
                 onClick={handleImport}
-                disabled={importing || selected.size === 0}
+                disabled={importing || selectedWithEmail.length === 0}
                 className="jarvis-btn-primary text-xs"
+                title={
+                  selectedWithEmail.length === 0
+                    ? "Add email addresses first"
+                    : undefined
+                }
               >
                 {importing ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <Plus className="h-3.5 w-3.5" />
                 )}
-                Import {selected.size} to Campaign
+                {selectedWithEmail.length > 0
+                  ? `Import ${selectedWithEmail.length} to Campaign`
+                  : "Add emails first"}
               </button>
             </>
           ) : (
@@ -298,7 +360,7 @@ export default function DiscoverLeadsPage() {
       )}
 
       {!loading && leads.length > 0 && (
-        <div className="overflow-hidden rounded-md border border-jarvis-border">
+        <div className="overflow-x-auto rounded-md border border-jarvis-border">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-jarvis-border bg-jarvis-surface">
@@ -313,8 +375,11 @@ export default function DiscoverLeadsPage() {
                 <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-jarvis-muted">
                   Founder / Company
                 </th>
-                <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-jarvis-muted">
-                  Description
+                <th className="min-w-[200px] px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-jarvis-muted">
+                  <div className="flex items-center gap-1">
+                    <Mail className="h-3 w-3" />
+                    Email (required to send)
+                  </div>
                 </th>
                 <th className="px-3 py-2.5 text-center text-[10px] font-semibold uppercase tracking-wider text-jarvis-muted">
                   Source
@@ -328,64 +393,74 @@ export default function DiscoverLeadsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-jarvis-border/50">
-              {leads.map((lead, i) => (
-                <tr
-                  key={i}
-                  className={`transition-colors ${
-                    selected.has(i)
-                      ? "bg-jarvis-blue/5"
-                      : "hover:bg-white/[0.02]"
-                  }`}
-                >
-                  <td className="px-3 py-2.5">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(i)}
-                      onChange={() => toggleSelect(i)}
-                      className="rounded border-jarvis-border"
-                    />
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <p className="font-medium text-white">{lead.company}</p>
-                    <p className="text-xs text-jarvis-muted">
-                      by {lead.name}
-                    </p>
-                  </td>
-                  <td className="max-w-xs px-3 py-2.5">
-                    <p className="truncate text-xs text-jarvis-muted">
-                      {lead.description}
-                    </p>
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        SOURCE_COLORS[lead.source] ?? "bg-white/5 text-jarvis-muted"
-                      }`}
-                    >
-                      {lead.source}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    {lead.score != null && lead.score > 0 ? (
-                      <span className="font-mono text-xs text-jarvis-gold">
-                        {lead.score}
+              {leads.map((lead, i) => {
+                const hasEmail = lead.email.trim() && lead.email.includes("@");
+                return (
+                  <tr
+                    key={i}
+                    className={`transition-colors ${
+                      selected.has(i)
+                        ? "bg-jarvis-blue/5"
+                        : "hover:bg-white/[0.02]"
+                    }`}
+                  >
+                    <td className="px-3 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(i)}
+                        onChange={() => toggleSelect(i)}
+                        className="rounded border-jarvis-border"
+                      />
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <p className="font-medium text-white">{lead.company}</p>
+                      <p className="text-xs text-jarvis-muted">by {lead.name}</p>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <input
+                        type="email"
+                        value={lead.email}
+                        onChange={(e) => updateEmail(i, e.target.value)}
+                        placeholder="founder@company.com"
+                        className={`w-full rounded-md border bg-transparent px-2 py-1 text-xs outline-none transition-colors ${
+                          hasEmail
+                            ? "border-jarvis-success/30 text-jarvis-success"
+                            : "border-jarvis-border text-jarvis-muted placeholder:text-jarvis-muted/30 focus:border-jarvis-blue/50"
+                        }`}
+                      />
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          SOURCE_COLORS[lead.source] ?? "bg-white/5 text-jarvis-muted"
+                        }`}
+                      >
+                        {lead.source}
                       </span>
-                    ) : (
-                      <span className="text-xs text-jarvis-muted">—</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    <a
-                      href={lead.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-jarvis-blue hover:underline"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      {lead.score != null && lead.score > 0 ? (
+                        <span className="font-mono text-xs text-jarvis-gold">
+                          {lead.score}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-jarvis-muted">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <a
+                        href={lead.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-jarvis-blue hover:underline"
+                        title="Open in new tab — find their email on their site"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -393,12 +468,13 @@ export default function DiscoverLeadsPage() {
 
       {/* Tips */}
       <div className="rounded-md border border-jarvis-border/50 bg-jarvis-surface/50 px-4 py-3">
-        <p className="text-xs font-medium text-jarvis-muted">Search tips:</p>
+        <p className="text-xs font-medium text-jarvis-muted">How to find founder emails:</p>
         <ul className="mt-1 space-y-0.5 text-xs text-jarvis-muted/80">
-          <li>&bull; Try keywords like &ldquo;SaaS&rdquo;, &ldquo;AI tool&rdquo;, &ldquo;developer&rdquo;, &ldquo;no-code&rdquo;, &ldquo;B2B&rdquo;</li>
-          <li>&bull; Hacker News &ldquo;Show HN&rdquo; posts are great — founders launching products and looking for users</li>
-          <li>&bull; HN Score = upvotes. Higher score = more popular launch = more legit founder</li>
-          <li>&bull; After importing, Jarvis will research each lead and draft personalized emails</li>
+          <li>&bull; Click the link icon to visit their site — emails are often on the About or Contact page</li>
+          <li>&bull; Check their Twitter/X bio — many founders list their email</li>
+          <li>&bull; Try <span className="text-jarvis-blue">firstname@company.com</span> — works surprisingly often</li>
+          <li>&bull; Use <a href="https://hunter.io" target="_blank" rel="noopener noreferrer" className="text-jarvis-blue hover:underline">hunter.io</a> (free tier) to find emails by domain</li>
+          <li>&bull; Only leads with valid emails will be imported and can receive outreach</li>
         </ul>
       </div>
     </div>

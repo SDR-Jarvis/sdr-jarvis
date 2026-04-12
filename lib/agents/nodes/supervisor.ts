@@ -27,6 +27,21 @@ export async function supervisorNode(
 
   const name = `${lead.firstName} ${lead.lastName}`;
 
+  // Skip leads without email — can't send outreach
+  if (!lead.email) {
+    logger.warn("supervisor", `[${idx}/${total}] ${name} — no email address, skipping`);
+    return {
+      currentLeadIndex: state.currentLeadIndex + 1,
+      researchData: null,
+      draftMessage: null,
+      approvalStatus: "none",
+      nextAgent: "supervisor",
+      messages: [
+        new AIMessage(`[${idx}/${total}] Skipping ${name} — no email address on file. Can't send outreach without one.`),
+      ],
+    };
+  }
+
   // Needs research
   if (!state.researchData) {
     logger.step("supervisor", `[${idx}/${total}] ${name} → researcher`);
