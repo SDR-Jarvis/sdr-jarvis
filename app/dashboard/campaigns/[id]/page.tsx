@@ -72,6 +72,7 @@ export default async function CampaignDetailPage({
 
   const newLeadsCount = allLeads.filter((l) => l.status === "new").length;
   const pendingCount = pendingApprovals?.length ?? 0;
+  const hasStaleRun = !!activeRun;
   const canRun = newLeadsCount > 0 && !activeRun;
 
   return (
@@ -119,7 +120,13 @@ export default async function CampaignDetailPage({
             <Users className="h-4 w-4" />
             Add Leads
           </Link>
-          <RunPipelineButton campaignId={id} canRun={canRun} newLeadsCount={newLeadsCount} />
+          <RunPipelineButton
+            campaignId={id}
+            canRun={canRun}
+            newLeadsCount={newLeadsCount}
+            totalLeads={allLeads.length}
+            hasStaleRun={hasStaleRun}
+          />
         </div>
       </div>
 
