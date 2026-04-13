@@ -10,6 +10,7 @@ interface Props {
   newLeadsCount: number;
   totalLeads: number;
   hasStaleRun: boolean;
+  campaignStatus: string;
 }
 
 type RunState = "idle" | "running" | "done" | "error";
@@ -19,7 +20,7 @@ interface LogEntry {
   message: string;
 }
 
-export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLeads, hasStaleRun }: Props) {
+export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLeads, hasStaleRun, campaignStatus }: Props) {
   const [state, setState] = useState<RunState>("idle");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState("");
@@ -151,7 +152,8 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLead
     router.refresh();
   }
 
-  const showReset = !canRun && totalLeads > 0 && (hasStaleRun || newLeadsCount === 0);
+  const isStuckRunning = campaignStatus === "running" && state !== "running";
+  const showReset = totalLeads > 0 && (hasStaleRun || newLeadsCount === 0 || isStuckRunning);
 
   return (
     <div>

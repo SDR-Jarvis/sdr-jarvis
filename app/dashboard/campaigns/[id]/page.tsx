@@ -126,6 +126,7 @@ export default async function CampaignDetailPage({
             newLeadsCount={newLeadsCount}
             totalLeads={allLeads.length}
             hasStaleRun={hasStaleRun}
+            campaignStatus={campaign.status}
           />
         </div>
       </div>
