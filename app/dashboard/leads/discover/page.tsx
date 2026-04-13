@@ -16,6 +16,8 @@ import {
   Filter,
   AlertTriangle,
   Mail,
+  Github,
+  Twitter,
 } from "lucide-react";
 
 interface DiscoveredLead {
@@ -31,14 +33,19 @@ interface DiscoveredLead {
 
 const SOURCES = [
   { id: "all", label: "All Sources", icon: Globe },
+  { id: "github", label: "GitHub", icon: Github },
+  { id: "twitter", label: "X / Twitter", icon: Twitter },
+  { id: "google", label: "Google", icon: Search },
   { id: "hackernews", label: "Hacker News", icon: Flame },
   { id: "producthunt", label: "Product Hunt", icon: Zap },
 ];
 
 const SOURCE_COLORS: Record<string, string> = {
+  "GitHub": "bg-white/10 text-white",
+  "X / Twitter": "bg-sky-400/10 text-sky-400",
+  "Google": "bg-green-400/10 text-green-400",
   "Hacker News": "bg-orange-400/10 text-orange-400",
   "Product Hunt": "bg-red-400/10 text-red-400",
-  "Indie Hackers": "bg-blue-400/10 text-blue-400",
 };
 
 export default function DiscoverLeadsPage() {
@@ -203,7 +210,7 @@ export default function DiscoverLeadsPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Discover Leads</h1>
           <p className="text-sm text-jarvis-muted">
-            Find founders from Hacker News, Product Hunt, and Indie Hackers.
+            Find founders with verified emails across GitHub, X, Google, HN, and Product Hunt.
           </p>
         </div>
       </div>
@@ -253,7 +260,7 @@ export default function DiscoverLeadsPage() {
           <div>
             <p className="font-medium">{leadsWithEmailCount} lead{leadsWithEmailCount > 1 ? "s" : ""} found with email addresses.</p>
             <p className="mt-0.5 text-xs text-jarvis-success/70">
-              Jarvis scraped HN profiles and websites to find these. Select and import to start outreach.
+              Jarvis scraped GitHub profiles, X bios, HN profiles, and websites to find these. Select and import to start outreach.
             </p>
           </div>
         </div>
@@ -355,10 +362,10 @@ export default function DiscoverLeadsPage() {
         <div className="flex flex-col items-center justify-center py-16">
           <Loader2 className="mb-3 h-8 w-8 animate-spin text-jarvis-blue" />
           <p className="text-sm text-jarvis-muted">
-            Searching for founders and scraping for email addresses...
+            Searching GitHub, X, Google, HN &amp; Product Hunt for founders with emails...
           </p>
           <p className="mt-1 text-xs text-jarvis-muted/50">
-            This may take 15-30 seconds as Jarvis checks profiles and websites.
+            This may take 20-40 seconds as Jarvis checks profiles and websites across multiple platforms.
           </p>
         </div>
       )}
