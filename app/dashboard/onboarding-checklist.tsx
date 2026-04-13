@@ -31,6 +31,7 @@ interface ChecklistData {
   hasCampaign: boolean;
   hasLeads: boolean;
   hasRun: boolean;
+  hasDomain: boolean;
 }
 
 const CHECKLIST: ChecklistItem[] = [
@@ -80,7 +81,7 @@ const CHECKLIST: ChecklistItem[] = [
     description: "Move beyond sandbox — send from your own professional domain.",
     href: "/dashboard/settings",
     icon: Globe,
-    check: () => false,
+    check: (d) => d.hasDomain,
   },
 ];
 
@@ -88,6 +89,7 @@ export function OnboardingChecklist() {
   const supabase = createClient();
   const [data, setData] = useState<ChecklistData | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [domainDismissed, setDomainDismissed] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -96,7 +98,7 @@ export function OnboardingChecklist() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const [profileRes, campaignRes, leadsRes, runsRes] = await Promise.all([
+      const [profileRes, campaignRes, leadsRes, runsRes, sentRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("full_name, company_name, icp_description")
@@ -114,15 +116,24 @@ export function OnboardingChecklist() {
           .from("agent_runs")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id),
+        supabase
+          .from("interactions")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("status", "sent"),
       ]);
 
       const profile = profileRes.data;
+      const dismissed = localStorage.getItem("jarvis_domain_done") === "1";
+      setDomainDismissed(dismissed);
+      const hasDomain = dismissed || (sentRes.count ?? 0) > 0;
       setData({
         hasProfile: !!(profile?.full_name && profile?.company_name),
         hasIcp: !!profile?.icp_description,
         hasCampaign: (campaignRes.count ?? 0) > 0,
         hasLeads: (leadsRes.count ?? 0) > 0,
         hasRun: (runsRes.count ?? 0) > 0,
+        hasDomain,
       });
     }
     load();
@@ -188,30 +199,44 @@ export function OnboardingChecklist() {
             const done = item.check(data);
             const Icon = item.icon;
             return (
-              <Link
-                key={item.id}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors ${
-                  done
-                    ? "opacity-50"
-                    : "hover:bg-white/[0.03]"
-                }`}
-              >
-                {done ? (
-                  <CheckCircle className="h-5 w-5 shrink-0 text-jarvis-success" />
-                ) : (
-                  <Circle className="h-5 w-5 shrink-0 text-jarvis-border" />
+              <div key={item.id} className="flex items-center gap-0">
+                <Link
+                  href={item.href}
+                  className={`flex flex-1 items-center gap-3 rounded-md px-3 py-2.5 transition-colors ${
+                    done
+                      ? "opacity-50"
+                      : "hover:bg-white/[0.03]"
+                  }`}
+                >
+                  {done ? (
+                    <CheckCircle className="h-5 w-5 shrink-0 text-jarvis-success" />
+                  ) : (
+                    <Circle className="h-5 w-5 shrink-0 text-jarvis-border" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${done ? "text-jarvis-muted line-through" : "text-white"}`}>
+                      {item.label}
+                    </p>
+                    <p className="text-xs text-jarvis-muted/60 truncate">
+                      {item.description}
+                    </p>
+                  </div>
+                  <Icon className="h-4 w-4 shrink-0 text-jarvis-muted/30" />
+                </Link>
+                {item.id === "domain" && !done && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      localStorage.setItem("jarvis_domain_done", "1");
+                      setDomainDismissed(true);
+                      setData((prev) => prev ? { ...prev, hasDomain: true } : prev);
+                    }}
+                    className="shrink-0 rounded-md px-2 py-1 text-[10px] font-medium text-jarvis-blue hover:bg-jarvis-blue/10 transition-colors"
+                  >
+                    Already done
+                  </button>
                 )}
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium ${done ? "text-jarvis-muted line-through" : "text-white"}`}>
-                    {item.label}
-                  </p>
-                  <p className="text-xs text-jarvis-muted/60 truncate">
-                    {item.description}
-                  </p>
-                </div>
-                <Icon className="h-4 w-4 shrink-0 text-jarvis-muted/30" />
-              </Link>
+              </div>
             );
           })}
         </div>
