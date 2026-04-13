@@ -33,7 +33,6 @@ const SOURCES = [
   { id: "all", label: "All Sources", icon: Globe },
   { id: "hackernews", label: "Hacker News", icon: Flame },
   { id: "producthunt", label: "Product Hunt", icon: Zap },
-  { id: "indiehackers", label: "Indie Hackers", icon: Globe },
 ];
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -88,8 +87,8 @@ export default function DiscoverLeadsPage() {
 
       const res = await fetch(`/api/leads/discover?${params}`);
       const data = await res.json();
-      const rawLeads = (data.leads ?? []) as Omit<DiscoveredLead, "email">[];
-      setLeads(rawLeads.map((l) => ({ ...l, email: "" })));
+      const rawLeads = (data.leads ?? []) as DiscoveredLead[];
+      setLeads(rawLeads.map((l) => ({ ...l, email: l.email ?? "" })));
     } catch {
       setLeads([]);
     } finally {
@@ -247,14 +246,25 @@ export default function DiscoverLeadsPage() {
         </div>
       </form>
 
-      {/* Email Tip Banner */}
-      {leads.length > 0 && leadsWithEmailCount === 0 && (
+      {/* Email Status Banner */}
+      {leads.length > 0 && leadsWithEmailCount > 0 && (
+        <div className="flex items-start gap-3 rounded-md border border-jarvis-success/20 bg-jarvis-success/5 px-4 py-3 text-sm text-jarvis-success">
+          <Mail className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-medium">{leadsWithEmailCount} lead{leadsWithEmailCount > 1 ? "s" : ""} found with email addresses.</p>
+            <p className="mt-0.5 text-xs text-jarvis-success/70">
+              Jarvis scraped HN profiles and websites to find these. Select and import to start outreach.
+            </p>
+          </div>
+        </div>
+      )}
+      {leads.length > 0 && leadsWithEmailCount === 0 && !loading && (
         <div className="flex items-start gap-3 rounded-md border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-sm text-amber-400">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            <p className="font-medium">These leads don&apos;t have email addresses yet.</p>
+            <p className="font-medium">No emails found automatically.</p>
             <p className="mt-0.5 text-xs text-amber-400/70">
-              Add emails in the Email column below before importing. You can find founder emails on their website, Twitter bio, or LinkedIn profile. Only leads with emails will be imported.
+              Add emails manually in the Email column, or try a different search. You can find founder emails on their website, Twitter bio, or LinkedIn.
             </p>
           </div>
         </div>
@@ -345,7 +355,10 @@ export default function DiscoverLeadsPage() {
         <div className="flex flex-col items-center justify-center py-16">
           <Loader2 className="mb-3 h-8 w-8 animate-spin text-jarvis-blue" />
           <p className="text-sm text-jarvis-muted">
-            Searching for founders across the internet...
+            Searching for founders and scraping for email addresses...
+          </p>
+          <p className="mt-1 text-xs text-jarvis-muted/50">
+            This may take 15-30 seconds as Jarvis checks profiles and websites.
           </p>
         </div>
       )}
