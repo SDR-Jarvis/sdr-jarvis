@@ -75,20 +75,28 @@ interface HNHit {
   created_at?: string;
 }
 
-async function searchHackerNews(query: string, browse: boolean): Promise<DiscoveredLead[]> {
+async function searchHackerNews(
+  query: string,
+  browse: boolean,
+  refresh: number
+): Promise<DiscoveredLead[]> {
   try {
+    const page = browse ? Math.min(refresh % 8, 7) : Math.min(refresh % 5, 4);
     const endpoint = browse
-      ? "https://hn.algolia.com/api/v1/search?tags=show_hn&hitsPerPage=40"
-      : `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=show_hn&hitsPerPage=40`;
+      ? `https://hn.algolia.com/api/v1/search?tags=show_hn&hitsPerPage=40&page=${page}`
+      : `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=show_hn&hitsPerPage=40&page=${page}`;
 
     const res = await fetch(endpoint, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return [];
 
     const hits: HNHit[] = ((await res.json()).hits ?? []) as HNHit[];
+    // Rotate through hit list when browsing so repeat searches don't start from identical rows
+    const offset = browse ? (refresh % 5) * 3 : 0;
+    const rotated = [...hits.slice(offset), ...hits.slice(0, offset)];
     const leads: DiscoveredLead[] = [];
 
-    for (let i = 0; i < hits.length && leads.length < 12; i += 10) {
-      const batch = hits.slice(i, i + 10);
+    for (let i = 0; i < rotated.length && leads.length < 12; i += 10) {
+      const batch = rotated.slice(i, i + 10);
       const profiles = await Promise.all(
         batch.map(async (hit) => {
           const author = hit.author ?? "Unknown";
@@ -123,7 +131,7 @@ async function searchHackerNews(query: string, browse: boolean): Promise<Discove
 // PRODUCT HUNT
 // ══════════════════════════════════════════════════════
 
-async function searchProductHunt(query: string): Promise<DiscoveredLead[]> {
+async function searchProductHunt(query: string, refresh: number): Promise<DiscoveredLead[]> {
   try {
     const res = await fetch(
       `https://www.producthunt.com/search?q=${encodeURIComponent(query)}`,
@@ -197,14 +205,23 @@ interface GitHubProfile {
   followers: number;
 }
 
-async function searchGitHub(query: string): Promise<DiscoveredLead[]> {
+const GITHUB_DEFAULT_QUERIES = [
+  "founder in:bio type:user",
+  "CEO in:bio type:user",
+  "startup in:bio type:user",
+  "indiehacker in:bio type:user",
+  "building in:bio type:user",
+];
+
+async function searchGitHub(query: string, refresh: number): Promise<DiscoveredLead[]> {
   try {
     const searchQuery = query.trim()
       ? `${query} type:user`
-      : "founder in:bio type:user";
+      : GITHUB_DEFAULT_QUERIES[refresh % GITHUB_DEFAULT_QUERIES.length];
 
+    const page = 1 + (refresh % 5);
     const res = await fetch(
-      `https://api.github.com/search/users?q=${encodeURIComponent(searchQuery)}&sort=followers&per_page=30`,
+      `https://api.github.com/search/users?q=${encodeURIComponent(searchQuery)}&sort=followers&per_page=30&page=${page}`,
       {
         headers: {
           Accept: "application/vnd.github+json",
@@ -294,14 +311,21 @@ async function searchGitHub(query: string): Promise<DiscoveredLead[]> {
 // X / TWITTER
 // ══════════════════════════════════════════════════════
 
-async function searchTwitter(query: string): Promise<DiscoveredLead[]> {
+const TWITTER_DEFAULT_QUERIES = [
+  "#buildinpublic founder",
+  "indie hacker launching -is:retweet",
+  "SaaS founder building -is:retweet",
+  "solo founder shipped -is:retweet",
+];
+
+async function searchTwitter(query: string, refresh: number): Promise<DiscoveredLead[]> {
   const bearerToken = process.env.X_BEARER_TOKEN;
   if (!bearerToken) return [];
 
   try {
     const searchQuery = query.trim()
       ? `${query} (founder OR CEO OR "building" OR "launched")`
-      : "#buildinpublic founder";
+      : TWITTER_DEFAULT_QUERIES[refresh % TWITTER_DEFAULT_QUERIES.length];
 
     const params = new URLSearchParams({
       query: searchQuery,
@@ -385,7 +409,14 @@ async function searchTwitter(query: string): Promise<DiscoveredLead[]> {
 // GOOGLE FOUNDER SEARCH
 // ══════════════════════════════════════════════════════
 
-async function searchGoogleFounders(query: string): Promise<DiscoveredLead[]> {
+const GOOGLE_DEFAULT_QUERIES = [
+  "indie hacker founder email contact",
+  "solo founder SaaS email contact",
+  "startup founder contact email about page",
+  "build in public founder email",
+];
+
+async function searchGoogleFounders(query: string, refresh: number): Promise<DiscoveredLead[]> {
   const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
   const cx = process.env.GOOGLE_SEARCH_CX;
   if (!apiKey || !cx) return [];
@@ -393,13 +424,15 @@ async function searchGoogleFounders(query: string): Promise<DiscoveredLead[]> {
   try {
     const searchQuery = query.trim()
       ? `${query} founder email contact`
-      : "indie hacker founder email SaaS";
+      : GOOGLE_DEFAULT_QUERIES[refresh % GOOGLE_DEFAULT_QUERIES.length];
 
+    const start = 1 + (refresh % 5) * 10;
     const params = new URLSearchParams({
       key: apiKey,
       cx,
       q: searchQuery,
       num: "10",
+      start: String(start),
     });
 
     const res = await fetch(
@@ -475,25 +508,42 @@ export async function GET(req: NextRequest) {
 
   const query = req.nextUrl.searchParams.get("q") ?? "";
   const source = req.nextUrl.searchParams.get("source") ?? "all";
+  const refreshParam = req.nextUrl.searchParams.get("refresh");
+  let refresh = parseInt(refreshParam ?? "0", 10);
+  if (Number.isNaN(refresh)) refresh = 0;
+
+  const { data: existingRows } = await supabase
+    .from("leads")
+    .select("email")
+    .eq("user_id", user.id)
+    .not("email", "is", null);
+
+  const existingEmails = new Set(
+    (existingRows ?? [])
+      .map((r: { email: string | null }) => r.email?.trim().toLowerCase())
+      .filter((e): e is string => Boolean(e))
+  );
 
   let results: DiscoveredLead[] = [];
 
   // Run sources in parallel when "all" is selected
   if (source === "all") {
     const [hn, ph, gh, tw, goog] = await Promise.all([
-      searchHackerNews(query, !query.trim()),
-      searchProductHunt(query || "saas"),
-      searchGitHub(query),
-      searchTwitter(query),
-      searchGoogleFounders(query),
+      searchHackerNews(query, !query.trim(), refresh),
+      searchProductHunt(query || "saas", refresh),
+      searchGitHub(query, refresh),
+      searchTwitter(query, refresh),
+      searchGoogleFounders(query, refresh),
     ]);
     results.push(...hn, ...ph, ...gh, ...tw, ...goog);
   } else {
-    if (source === "hackernews") results.push(...await searchHackerNews(query, !query.trim()));
-    if (source === "producthunt") results.push(...await searchProductHunt(query || "saas"));
-    if (source === "github") results.push(...await searchGitHub(query));
-    if (source === "twitter") results.push(...await searchTwitter(query));
-    if (source === "google") results.push(...await searchGoogleFounders(query));
+    if (source === "hackernews")
+      results.push(...(await searchHackerNews(query, !query.trim(), refresh)));
+    if (source === "producthunt")
+      results.push(...(await searchProductHunt(query || "saas", refresh)));
+    if (source === "github") results.push(...(await searchGitHub(query, refresh)));
+    if (source === "twitter") results.push(...(await searchTwitter(query, refresh)));
+    if (source === "google") results.push(...(await searchGoogleFounders(query, refresh)));
   }
 
   // Sort by score (followers, points, etc.)
@@ -512,5 +562,13 @@ export async function GET(req: NextRequest) {
     return true;
   });
 
-  return NextResponse.json({ leads: results.slice(0, 50) });
+  const skippedAlreadyImported = results.filter((r) =>
+    existingEmails.has(r.email.toLowerCase())
+  ).length;
+  results = results.filter((r) => !existingEmails.has(r.email.toLowerCase()));
+
+  return NextResponse.json({
+    leads: results.slice(0, 50),
+    skippedAlreadyImported,
+  });
 }

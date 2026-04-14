@@ -62,6 +62,9 @@ export default function DiscoverLeadsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [skippedAlreadyImported, setSkippedAlreadyImported] = useState<number | null>(
+    null
+  );
 
   useEffect(() => {
     async function loadCampaigns() {
@@ -91,13 +94,19 @@ export default function DiscoverLeadsPage() {
     try {
       const params = new URLSearchParams({ source });
       if (query.trim()) params.set("q", query.trim());
+      params.set("refresh", String(Date.now()));
 
       const res = await fetch(`/api/leads/discover?${params}`);
       const data = await res.json();
       const rawLeads = (data.leads ?? []) as DiscoveredLead[];
       setLeads(rawLeads.map((l) => ({ ...l, email: l.email ?? "" })));
+      const skipped = data.skippedAlreadyImported;
+      setSkippedAlreadyImported(
+        typeof skipped === "number" ? skipped : null
+      );
     } catch {
       setLeads([]);
+      setSkippedAlreadyImported(null);
     } finally {
       setLoading(false);
     }
@@ -252,6 +261,17 @@ export default function DiscoverLeadsPage() {
           </button>
         </div>
       </form>
+
+      {skippedAlreadyImported !== null && skippedAlreadyImported > 0 && (
+        <div className="flex items-start gap-3 rounded-md border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-jarvis-muted">
+          <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-jarvis-muted" />
+          <p>
+            Hid {skippedAlreadyImported} lead
+            {skippedAlreadyImported !== 1 ? "s" : ""} whose email is already in your
+            account. Search again or narrow your query for more new contacts.
+          </p>
+        </div>
+      )}
 
       {/* Email Status Banner */}
       {leads.length > 0 && leadsWithEmailCount > 0 && (
