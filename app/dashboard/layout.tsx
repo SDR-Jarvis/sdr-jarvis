@@ -13,9 +13,11 @@ import {
   Zap,
   LogOut,
   Compass,
+  Shield,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -28,6 +30,8 @@ const NAV_ITEMS = [
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
+const ADMIN_EMAIL = "ronith.reagan@gmail.com";
+
 export default function DashboardLayout({
   children,
 }: {
@@ -36,6 +40,13 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email === ADMIN_EMAIL) setIsAdmin(true);
+    });
+  }, []);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -83,6 +94,20 @@ export default function DashboardLayout({
 
         {/* Bottom */}
         <div className="space-y-1 border-t border-jarvis-border px-3 py-4">
+          {isAdmin && (
+            <Link
+              href="/dashboard/admin"
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/dashboard/admin"
+                  ? "bg-jarvis-gold/10 text-jarvis-gold"
+                  : "text-jarvis-gold/60 hover:bg-white/5 hover:text-jarvis-gold"
+              )}
+            >
+              <Shield className="h-4 w-4" />
+              Admin
+            </Link>
+          )}
           <Link
             href="/dashboard/settings"
             className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-jarvis-muted hover:bg-white/5 hover:text-white transition-colors"

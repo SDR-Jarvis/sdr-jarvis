@@ -1,9 +1,4 @@
-// Stripe integration is disabled for now.
-// This file retains plan definitions so the rest of the app can reference them.
-// When Stripe is enabled, uncomment the Stripe SDK import and client below.
-
-// import Stripe from "stripe";
-// export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+// Stripe integration is paused until after launch. Plan definitions stay for UI/subscription helpers.
 
 export interface PlanConfig {
   name: string;
@@ -16,7 +11,7 @@ export interface PlanConfig {
 
 export const PLANS: Record<string, PlanConfig> = {
   free: {
-    name: "Free",
+    name: "Free (Beta)",
     price: 0,
     leadsPerMonth: 9999,
     emailsPerMonth: 9999,
@@ -31,12 +26,12 @@ export const PLANS: Record<string, PlanConfig> = {
   },
   starter: {
     name: "Starter",
-    price: 49,
-    leadsPerMonth: 500,
-    emailsPerMonth: 500,
+    price: 29,
+    leadsPerMonth: 200,
+    emailsPerMonth: 200,
     features: [
-      "500 leads / month",
-      "500 emails / month",
+      "200 leads / month",
+      "200 emails / month",
       "AI research & drafting",
       "Human approval flow",
       "Full analytics",
@@ -47,16 +42,15 @@ export const PLANS: Record<string, PlanConfig> = {
   },
   growth: {
     name: "Growth",
-    price: 99,
-    leadsPerMonth: 2000,
-    emailsPerMonth: 2000,
+    price: 79,
+    leadsPerMonth: 1000,
+    emailsPerMonth: 1000,
     features: [
-      "2,000 leads / month",
-      "2,000 emails / month",
+      "1,000 leads / month",
+      "1,000 emails / month",
       "Everything in Starter",
       "Multi-step sequences",
-      "A/B subject testing",
-      "Slack notifications",
+      "Reply intelligence",
       "Dedicated onboarding",
     ],
     stripePriceId: null,
