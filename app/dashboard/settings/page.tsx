@@ -14,8 +14,10 @@ import {
   Copy,
   ExternalLink,
   CreditCard,
+  Mail,
 } from "lucide-react";
 import { BillingTab } from "./billing-tab";
+import { TestEmailButton } from "../test-email-button";
 
 type Tab = "profile" | "domain" | "billing";
 
@@ -146,6 +148,17 @@ function SettingsContent() {
 
       {tab === "profile" && (
         <>
+          <div id="test-email" className="jarvis-card space-y-3 scroll-mt-24">
+            <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-jarvis-muted">
+              <Mail className="h-4 w-4" />
+              Email delivery
+            </h2>
+            <p className="text-sm text-jarvis-muted">
+              Sends one message to your login email so you can confirm Resend and your domain are working before you email leads.
+            </p>
+            <TestEmailButton />
+          </div>
+
           {/* Profile */}
           <div className="jarvis-card space-y-4">
             <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-jarvis-muted">

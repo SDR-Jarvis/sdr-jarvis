@@ -15,6 +15,7 @@ import {
 import { getJarvisGreeting, formatRelativeTime } from "@/lib/utils";
 import { ApprovalActions } from "./approval-actions";
 import { OnboardingChecklist } from "./onboarding-checklist";
+import { QuickStartBanner } from "./quick-start-banner";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -24,7 +25,7 @@ export default async function DashboardPage() {
   if (!user) redirect("/");
 
   // Fetch dashboard data in parallel
-  const [campaignsRes, approvalsRes, leadsRes, recentRes] = await Promise.all([
+  const [campaignsRes, approvalsRes, leadsRes, recentRes, testEmailRes] = await Promise.all([
     supabase
       .from("campaigns")
       .select("id, name, status, stats")
@@ -48,12 +49,18 @@ export default async function DashboardPage() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(8),
+    supabase
+      .from("audit_log")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("action", "test_email_sent"),
   ]);
 
   const campaigns = campaignsRes.data ?? [];
   const pendingApprovals = approvalsRes.data ?? [];
   const totalLeads = leadsRes.count ?? 0;
   const recentActivity = recentRes.data ?? [];
+  const hasSentTestEmail = (testEmailRes.count ?? 0) > 0;
 
   // Aggregate stats from campaigns
   const totalSent = campaigns.reduce(
@@ -91,6 +98,8 @@ export default async function DashboardPage() {
           </a>
         </div>
       </div>
+
+      <QuickStartBanner show={!hasSentTestEmail} />
 
       {/* ── Onboarding Checklist ────────────────── */}
       <OnboardingChecklist />
@@ -144,8 +153,23 @@ export default async function DashboardPage() {
           <div className="jarvis-card flex flex-col items-center justify-center py-12 text-center">
             <CheckCircle className="mb-3 h-8 w-8 text-jarvis-success/40" />
             <p className="text-sm text-jarvis-muted">
-              Queue is clear. Nothing requires your attention right now.
+              Nothing waiting. Run a campaign with leads that have emails — drafts show up here for approval.
             </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <a
+                href="/dashboard/leads/discover"
+                className="text-xs font-medium text-jarvis-blue hover:underline"
+              >
+                Discover leads
+              </a>
+              <span className="text-jarvis-muted/40">·</span>
+              <a
+                href="/dashboard/campaigns"
+                className="text-xs font-medium text-jarvis-blue hover:underline"
+              >
+                Run pipeline
+              </a>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">

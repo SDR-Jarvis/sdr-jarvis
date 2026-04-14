@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Mail,
 } from "lucide-react";
 
 interface ChecklistItem {
@@ -26,6 +27,7 @@ interface ChecklistItem {
 }
 
 interface ChecklistData {
+  hasTestEmail: boolean;
   hasProfile: boolean;
   hasIcp: boolean;
   hasCampaign: boolean;
@@ -36,9 +38,17 @@ interface ChecklistData {
 
 const CHECKLIST: ChecklistItem[] = [
   {
+    id: "test_email",
+    label: "Send a test email",
+    description: "Confirm mail reaches your inbox (Settings → Email delivery).",
+    href: "/dashboard/settings?tab=profile#test-email",
+    icon: Mail,
+    check: (d) => d.hasTestEmail,
+  },
+  {
     id: "profile",
     label: "Set up your profile",
-    description: "Add your name, company, and role so Jarvis can sign emails properly.",
+    description: "Name, company, and role — used in signatures and context.",
     href: "/dashboard/settings",
     icon: User,
     check: (d) => d.hasProfile,
@@ -46,7 +56,7 @@ const CHECKLIST: ChecklistItem[] = [
   {
     id: "icp",
     label: "Define your ideal customer",
-    description: "Tell Jarvis who to target — titles, industries, company size.",
+    description: "Who you sell to — Jarvis uses this to score and angle outreach.",
     href: "/dashboard/settings",
     icon: Building2,
     check: (d) => d.hasIcp,
@@ -61,8 +71,8 @@ const CHECKLIST: ChecklistItem[] = [
   },
   {
     id: "leads",
-    label: "Import leads",
-    description: "Upload a CSV with prospect names, emails, and companies.",
+    label: "Import or discover leads",
+    description: "CSV import or Discover — you need emails to run outreach.",
     href: "/dashboard/leads/import",
     icon: Upload,
     check: (d) => d.hasLeads,
@@ -98,7 +108,7 @@ export function OnboardingChecklist() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const [profileRes, campaignRes, leadsRes, runsRes, sentRes] = await Promise.all([
+      const [profileRes, campaignRes, leadsRes, runsRes, sentRes, testEmailRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("full_name, company_name, icp_description")
@@ -121,6 +131,11 @@ export function OnboardingChecklist() {
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id)
           .eq("status", "sent"),
+        supabase
+          .from("audit_log")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("action", "test_email_sent"),
       ]);
 
       const profile = profileRes.data;
@@ -128,6 +143,7 @@ export function OnboardingChecklist() {
       setDomainDismissed(dismissed);
       const hasDomain = dismissed || (sentRes.count ?? 0) > 0;
       setData({
+        hasTestEmail: (testEmailRes.count ?? 0) > 0,
         hasProfile: !!(profile?.full_name && profile?.company_name),
         hasIcp: !!profile?.icp_description,
         hasCampaign: (campaignRes.count ?? 0) > 0,
