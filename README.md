@@ -11,7 +11,7 @@ Built for solo founders, indie hackers, and early-stage startups who want to cru
 | Frontend | Next.js 15 (App Router) + Tailwind CSS |
 | Backend | Supabase (Postgres + Auth + pgvector) |
 | Orchestration | LangGraph (stateful multi-agent with human-in-the-loop) |
-| LLM | Grok 4.1 Fast via xAI API |
+| LLM | OpenAI (e.g. GPT-4o / GPT-4o-mini via API); optional xAI Grok |
 | Email | Resend |
 | Research | Playwright (headless browser) |
 | Calendar | Google Calendar API |
@@ -41,11 +41,14 @@ npx supabase db push
 
 Or paste the contents of `supabase/migrations/001_initial_schema.sql` into the Supabase SQL editor.
 
-### 3. xAI / Grok API Key
+### 3. OpenAI API Key
 
-1. Go to [console.x.ai](https://console.x.ai)
-2. Create an API key
-3. Add to `.env.local` as `XAI_API_KEY`
+1. Go to [platform.openai.com](https://platform.openai.com)
+2. Create an API key under **API keys**
+3. Add to `.env.local` as `OPENAI_API_KEY`
+4. Set `LLM_PROVIDER=openai` and `LLM_MODEL=gpt-4o-mini` (or another model your account supports)
+
+**Optional — xAI Grok:** set `LLM_PROVIDER=xai`, `XAI_API_KEY`, and `XAI_MODEL` instead.
 
 ### 4. Resend (Email)
 
@@ -144,14 +147,14 @@ curl -X POST http://localhost:3000/api/agents/run \
 |---------|-----------|-------------------|
 | Supabase | 500MB DB, 50K MAU | $0 |
 | Vercel | Hobby plan | $0 (Pro: $20/mo for longer timeouts) |
-| xAI Grok | Pay-per-token | ~$20-40/mo |
+| OpenAI API | Pay-per-token | ~$10-50/mo (varies by model + volume) |
 | Resend | 100 emails/day | $0 |
 | Google Calendar | Free | $0 |
 | LangSmith | 5K traces/mo | $0 |
 | **Total** | | **~$20-60/mo** |
 
 Tips:
-- Use `grok-4.1-fast` (not the full model) for all routine tasks
+- Use a smaller/faster OpenAI model for high-volume steps; step up only where quality matters
 - Batch lead research during off-peak hours
 - Cache research results in Supabase — don't re-scrape the same lead
 - Use structured JSON output to minimize token waste
@@ -174,7 +177,7 @@ sdr-jarvis/
 │           └── approve/route.ts # Approve/reject outbound
 ├── lib/
 │   ├── utils.ts                 # cn(), formatters, greeting
-│   ├── grok.ts                  # xAI client + Jarvis system prompt
+│   ├── llm.ts                   # OpenAI / optional xAI client
 │   ├── supabase/
 │   │   ├── client.ts            # Browser client
 │   │   └── server.ts            # Server + service role client
@@ -202,7 +205,7 @@ sdr-jarvis/
 - [ ] Qualifier agent (handle email replies, qualify interest)
 - [ ] Analyst agent (campaign scoring, weekly digest)
 - [ ] Jarvis chat panel (conversational interface in dashboard)
-- [ ] Voice input via Grok Voice API
+- [ ] Voice input for Jarvis chat (optional)
 - [ ] LinkedIn message sending (via Playwright)
 - [ ] Webhook for incoming email replies (Resend → `/api/webhooks/reply`)
 - [ ] Stripe integration for billing ($49/$99 tiers)

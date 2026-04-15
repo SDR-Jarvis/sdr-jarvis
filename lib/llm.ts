@@ -40,8 +40,8 @@ export function createLLMClient(options?: {
   maxTokens?: number;
   streaming?: boolean;
 }) {
-  // Default xAI Grok matches product positioning; set LLM_PROVIDER=openai for OpenAI.
-  const provider = process.env.LLM_PROVIDER ?? "xai";
+  // Default OpenAI. Optional: LLM_PROVIDER=xai + XAI_API_KEY + XAI_MODEL for Grok.
+  const provider = process.env.LLM_PROVIDER ?? "openai";
 
   if (provider === "xai") {
     return new ChatOpenAI({

@@ -185,7 +185,7 @@ export default function LandingPage() {
           <span className="hidden sm:block text-jarvis-border">|</span>
           <span className="flex items-center gap-1.5">
             <Brain className="h-3.5 w-3.5 text-jarvis-blue/60" />
-            Powered by xAI Grok
+            Powered by OpenAI
           </span>
           <span className="hidden sm:block text-jarvis-border">|</span>
           <span className="flex items-center gap-1.5">
