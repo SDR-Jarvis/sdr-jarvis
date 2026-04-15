@@ -18,7 +18,6 @@ import {
   Search,
   CheckCircle,
   Users,
-  Sparkles,
   MessageSquare,
   TrendingUp,
   ChevronRight,
@@ -143,23 +142,21 @@ export default function LandingPage() {
 
       {/* ═══════════ HERO ═══════════ */}
       <section className="relative z-10 mx-auto max-w-5xl px-6 pb-24 pt-20 text-center">
-        <div className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border border-jarvis-blue/20 bg-jarvis-blue/5 px-4 py-1.5 text-xs font-medium text-jarvis-blue">
-          <Sparkles className="h-3.5 w-3.5" />
-          AI-powered outbound for solo founders
-        </div>
-
-        <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl leading-[1.1]">
-          Stop writing cold emails.
+        <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl leading-[1.12]">
+          AI-powered outbound
           <br />
-          <span className="bg-gradient-to-r from-jarvis-blue to-jarvis-cyan bg-clip-text text-transparent">
-            Start closing deals.
+          <span className="text-white">for solo founders.</span>
+          <span className="mt-3 block text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
+            <span className="bg-gradient-to-r from-jarvis-blue to-jarvis-cyan bg-clip-text text-transparent">
+              Your first sales hire — minus the salary.
+            </span>
           </span>
         </h1>
 
         <p className="mx-auto mt-6 max-w-2xl text-lg text-jarvis-muted leading-relaxed">
-          SDR Jarvis finds your ideal prospects, researches them deeply, writes
-          hyper-personalized emails, and sends them — but only after you approve.
-          Your AI sales rep that never sleeps.
+          The SDR for founders who hate doing sales: Jarvis researches each prospect,
+          writes a real first draft, and waits for your approval before anything sends.
+          No spam blasts. No pretending you hired a team.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -188,7 +185,7 @@ export default function LandingPage() {
           <span className="hidden sm:block text-jarvis-border">|</span>
           <span className="flex items-center gap-1.5">
             <Brain className="h-3.5 w-3.5 text-jarvis-blue/60" />
-            Powered by GPT-4o
+            Powered by xAI Grok
           </span>
           <span className="hidden sm:block text-jarvis-border">|</span>
           <span className="flex items-center gap-1.5">
@@ -504,7 +501,7 @@ export default function LandingPage() {
             <span className="text-sm font-bold text-white">SDR Jarvis</span>
           </div>
           <p className="text-xs text-jarvis-muted/40">
-            Built for founders who&apos;d rather close deals than write cold emails.
+            AI-powered outbound for solo founders — your first sales hire, minus the salary.
           </p>
         </div>
       </footer>

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SDR Jarvis — Your AI Sales Development Rep",
+  title: "SDR Jarvis — AI outbound for solo founders",
   description:
-    "Crush outbound without burnout. Jarvis researches prospects, writes hyper-personalized emails, and books meetings — with your approval on every send.",
+    "AI-powered outbound for solo founders. Your first sales hire — minus the salary. Jarvis researches each lead and drafts email; you approve every send.",
 };
 
 export default function RootLayout({
