@@ -123,7 +123,11 @@ export async function outreachNode(
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logger.error("outreach", "LLM returned non-JSON", { preview: text.slice(0, 200) });
-      return { errors: ["Outreach: LLM returned non-JSON"] };
+      return skipLeadAfterDraftFailure(
+        state,
+        lead,
+        "Outreach: LLM returned non-JSON — skipped this lead."
+      );
     }
 
     const draft: DraftMessage = JSON.parse(jsonMatch[0]);
@@ -165,13 +169,33 @@ export async function outreachNode(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("outreach", `Draft failed for ${name}: ${msg}`);
-    return {
-      errors: [`Outreach error: ${msg}`],
-      messages: [
-        new AIMessage(`Couldn't draft for ${lead.firstName}. ${msg}. Want me to retry?`),
-      ],
-    };
+    return skipLeadAfterDraftFailure(
+      state,
+      lead,
+      `Couldn't draft for ${lead.firstName}: ${msg}`
+    );
   }
+}
+
+/** Without a draft, supervisor would loop outreach forever — advance to next lead. */
+function skipLeadAfterDraftFailure(
+  state: JarvisStateType,
+  lead: { firstName: string; lastName: string },
+  errorLine: string
+): Partial<JarvisStateType> {
+  const short =
+    errorLine.length > 180 ? `${errorLine.slice(0, 177)}…` : errorLine;
+  return {
+    currentLeadIndex: state.currentLeadIndex + 1,
+    researchData: null,
+    draftMessage: null,
+    approvalStatus: "none",
+    nextAgent: "supervisor",
+    errors: [errorLine],
+    messages: [
+      new AIMessage(`${short} Moving to the next lead.`),
+    ],
+  };
 }
 
 function buildDraftResult(

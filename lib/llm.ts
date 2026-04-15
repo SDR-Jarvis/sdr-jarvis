@@ -1,5 +1,40 @@
 import { ChatOpenAI } from "@langchain/openai";
 
+const XAI_DEFAULT_MODEL = "grok-4.1-fast";
+const OPENAI_DEFAULT_MODEL = "gpt-4o-mini";
+
+/** OpenAI-style ids are invalid on xAI and return 400 "Model not found". */
+function looksLikeOpenAIModelId(id: string): boolean {
+  const lower = id.toLowerCase().trim();
+  return (
+    lower.startsWith("gpt-") ||
+    lower.startsWith("o1") ||
+    lower.startsWith("o3") ||
+    lower.startsWith("o4") ||
+    lower.startsWith("text-") ||
+    lower.startsWith("davinci") ||
+    lower.startsWith("curie")
+  );
+}
+
+function looksLikeXaiModelId(id: string): boolean {
+  return id.toLowerCase().includes("grok");
+}
+
+function resolveXaiModel(): string {
+  const explicit = process.env.XAI_MODEL?.trim();
+  if (explicit) return explicit;
+  const fromLlm = process.env.LLM_MODEL?.trim();
+  if (fromLlm && !looksLikeOpenAIModelId(fromLlm)) return fromLlm;
+  return XAI_DEFAULT_MODEL;
+}
+
+function resolveOpenAIModel(): string {
+  const fromEnv = process.env.LLM_MODEL?.trim();
+  if (fromEnv && !looksLikeXaiModelId(fromEnv)) return fromEnv;
+  return OPENAI_DEFAULT_MODEL;
+}
+
 export function createLLMClient(options?: {
   temperature?: number;
   maxTokens?: number;
@@ -10,7 +45,7 @@ export function createLLMClient(options?: {
 
   if (provider === "xai") {
     return new ChatOpenAI({
-      model: process.env.LLM_MODEL ?? "grok-4.1-fast",
+      model: resolveXaiModel(),
       apiKey: process.env.XAI_API_KEY,
       configuration: { baseURL: "https://api.x.ai/v1" },
       temperature: options?.temperature ?? 0.7,
@@ -20,7 +55,7 @@ export function createLLMClient(options?: {
   }
 
   return new ChatOpenAI({
-    model: process.env.LLM_MODEL ?? "gpt-4o-mini",
+    model: resolveOpenAIModel(),
     apiKey: process.env.OPENAI_API_KEY,
     temperature: options?.temperature ?? 0.7,
     maxTokens: options?.maxTokens,
