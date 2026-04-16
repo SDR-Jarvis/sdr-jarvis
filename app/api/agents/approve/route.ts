@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { resumeAfterApproval } from "@/lib/agents/jarvis-graph";
 import { sendEmail } from "@/lib/agents/tools";
 import { logger } from "@/lib/logger";
 import { canSendEmail, incrementEmailsSent } from "@/lib/subscription";
+import { ensureComplianceInBody } from "@/lib/compliance";
+import { countSendsTodayUtc } from "@/lib/usage-limits";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -116,26 +117,61 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("email_opt_out_footer, postal_address, warmup_daily_send_cap")
+    .eq("id", user.id)
+    .single();
+
+  const warmupCap =
+    (profileRow as { warmup_daily_send_cap?: number } | null)
+      ?.warmup_daily_send_cap ?? 20;
+  const sentToday = await countSendsTodayUtc(supabase, user.id);
+  if (sentToday >= warmupCap) {
+    return NextResponse.json(
+      {
+        error: `Daily send limit reached (${warmupCap} sends per UTC day, warmup guardrail). Increase the cap in Settings → Compliance & deliverability or wait until tomorrow.`,
+      },
+      { status: 429 }
+    );
+  }
+
+  const bodyToSend = ensureComplianceInBody(emailBody ?? "", {
+    optOutLine:
+      (profileRow as { email_opt_out_footer?: string } | null)
+        ?.email_opt_out_footer ?? "",
+    postalAddress: (profileRow as { postal_address?: string | null } | null)
+      ?.postal_address,
+  });
+
   logger.step("approval", `Sending approved email to ${lead.email}`);
 
   // If edited, update the approval and interaction records
   if (action === "edit") {
     await supabase
       .from("approvals")
-      .update({ preview_subject: subject, preview_body: emailBody })
+      .update({ preview_subject: subject, preview_body: bodyToSend })
       .eq("id", approvalId);
 
     await supabase
       .from("interactions")
-      .update({ subject, body: emailBody })
+      .update({ subject, body: bodyToSend })
+      .eq("id", approval.interaction_id);
+  } else if (bodyToSend !== emailBody) {
+    await supabase
+      .from("approvals")
+      .update({ preview_body: bodyToSend })
+      .eq("id", approvalId);
+    await supabase
+      .from("interactions")
+      .update({ body: bodyToSend })
       .eq("id", approval.interaction_id);
   }
 
-  // Send the email
   const result = await sendEmail({
     to: lead.email,
     subject: subject ?? "",
-    body: emailBody ?? "",
+    body: bodyToSend,
   });
 
   // Update all records

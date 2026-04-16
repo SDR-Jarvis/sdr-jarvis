@@ -15,6 +15,8 @@ import {
   ChevronUp,
   Sparkles,
   Mail,
+  Shield,
+  PenLine,
 } from "lucide-react";
 
 interface ChecklistItem {
@@ -34,16 +36,34 @@ interface ChecklistData {
   hasLeads: boolean;
   hasRun: boolean;
   hasDomain: boolean;
+  hasCompliance: boolean;
+  hasReviewedDraft: boolean;
 }
 
 const CHECKLIST: ChecklistItem[] = [
   {
     id: "test_email",
-    label: "Send a test email",
-    description: "Confirm mail reaches your inbox (Settings → Email delivery).",
+    label: "Connect Resend — send a test email",
+    description: "Confirm mail reaches your inbox (Settings → Profile → Email delivery).",
     href: "/dashboard/settings?tab=profile#test-email",
     icon: Mail,
     check: (d) => d.hasTestEmail,
+  },
+  {
+    id: "domain",
+    label: "Set up a sending domain",
+    description: "SPF/DKIM/DMARC on a dedicated domain — see Settings → Email Domain.",
+    href: "/dashboard/settings?tab=domain",
+    icon: Globe,
+    check: (d) => d.hasDomain,
+  },
+  {
+    id: "compliance",
+    label: "Compliance footer & warmup cap",
+    description: "Opt-out line, postal address, daily send guardrail (Settings → Compliance).",
+    href: "/dashboard/settings?tab=compliance",
+    icon: Sparkles,
+    check: (d) => d.hasCompliance,
   },
   {
     id: "profile",
@@ -71,8 +91,8 @@ const CHECKLIST: ChecklistItem[] = [
   },
   {
     id: "leads",
-    label: "Import or discover leads",
-    description: "CSV import or Discover — you need emails to run outreach.",
+    label: "Add 3–5 leads",
+    description: "Import CSV or Discover — start small to validate quality.",
     href: "/dashboard/leads/import",
     icon: Upload,
     check: (d) => d.hasLeads,
@@ -80,18 +100,18 @@ const CHECKLIST: ChecklistItem[] = [
   {
     id: "run",
     label: "Run your first pipeline",
-    description: "Let Jarvis research prospects and draft personalized outreach.",
+    description: "Research + drafts (try Dry run first to save LLM cost — campaign page).",
     href: "/dashboard/campaigns",
     icon: Sparkles,
     check: (d) => d.hasRun,
   },
   {
-    id: "domain",
-    label: "Set up a sending domain",
-    description: "Move beyond sandbox — send from your own professional domain.",
-    href: "/dashboard/settings",
-    icon: Globe,
-    check: (d) => d.hasDomain,
+    id: "approve",
+    label: "Approve or edit a draft",
+    description: "Human-in-the-loop — review research context, then send.",
+    href: "/dashboard/approvals",
+    icon: PenLine,
+    check: (d) => d.hasReviewedDraft,
   },
 ];
 
@@ -108,10 +128,11 @@ export function OnboardingChecklist() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const [profileRes, campaignRes, leadsRes, runsRes, sentRes, testEmailRes] = await Promise.all([
+      const [profileRes, campaignRes, leadsRes, runsRes, sentRes, testEmailRes, approvalsDoneRes] =
+        await Promise.all([
         supabase
           .from("profiles")
-          .select("full_name, company_name, icp_description")
+          .select("full_name, company_name, icp_description, postal_address")
           .eq("id", user.id)
           .single(),
         supabase
@@ -136,12 +157,20 @@ export function OnboardingChecklist() {
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id)
           .eq("action", "test_email_sent"),
+        supabase
+          .from("approvals")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .neq("status", "pending"),
       ]);
 
       const profile = profileRes.data;
       const dismissed = localStorage.getItem("jarvis_domain_done") === "1";
       setDomainDismissed(dismissed);
       const hasDomain = dismissed || (sentRes.count ?? 0) > 0;
+      const postalOk =
+        typeof profile?.postal_address === "string" &&
+        profile.postal_address.trim().length >= 8;
       setData({
         hasTestEmail: (testEmailRes.count ?? 0) > 0,
         hasProfile: !!(profile?.full_name && profile?.company_name),
@@ -150,6 +179,8 @@ export function OnboardingChecklist() {
         hasLeads: (leadsRes.count ?? 0) > 0,
         hasRun: (runsRes.count ?? 0) > 0,
         hasDomain,
+        hasCompliance: postalOk,
+        hasReviewedDraft: (approvalsDoneRes.count ?? 0) > 0,
       });
     }
     load();

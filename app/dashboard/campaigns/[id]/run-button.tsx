@@ -25,6 +25,7 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLead
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState("");
   const [resetting, setResetting] = useState(false);
+  const [dryRun, setDryRun] = useState(false);
   const router = useRouter();
   const logsEndRef = useRef<HTMLDivElement>(null);
   const finalStateRef = useRef<RunState>("idle");
@@ -64,17 +65,26 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLead
   async function handleRun() {
     if (!canRun) return;
 
+    if (newLeadsCount >= 50) {
+      const ok = window.confirm(
+        `You're about to process ${newLeadsCount} leads in one run. That can be expensive (LLM) and risky for deliverability. Continue?`
+      );
+      if (!ok) return;
+    }
+
     setState("running");
     finalStateRef.current = "running";
     setLogs([]);
     setError("");
-    addLog(`Starting pipeline for ${newLeadsCount} lead${newLeadsCount > 1 ? "s" : ""}…`);
+    addLog(
+      `${dryRun ? "Dry run — " : ""}Starting pipeline for ${newLeadsCount} lead${newLeadsCount > 1 ? "s" : ""}…`
+    );
 
     try {
       const res = await fetch("/api/agents/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignId }),
+        body: JSON.stringify({ campaignId, dryRun }),
       });
 
       if (!res.ok) {
@@ -157,6 +167,19 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLead
 
   return (
     <div>
+      <label className="mb-3 flex cursor-pointer items-center gap-2 text-sm text-jarvis-muted">
+        <input
+          type="checkbox"
+          checked={dryRun}
+          onChange={(e) => setDryRun(e.target.checked)}
+          className="rounded border-jarvis-border bg-jarvis-dark"
+        />
+        <span>
+          <strong className="text-white">Dry run</strong> — research only, no drafts (saves LLM cost;
+          no approval queue)
+        </span>
+      </label>
+
       <div className="flex items-center gap-2">
         {/* Reset Button */}
         {showReset && state !== "running" && (

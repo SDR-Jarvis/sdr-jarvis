@@ -30,8 +30,6 @@ const NAV_ITEMS = [
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
-const ADMIN_EMAIL = "ronith.reagan@gmail.com";
-
 export default function DashboardLayout({
   children,
 }: {
@@ -43,8 +41,14 @@ export default function DashboardLayout({
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user?.email === ADMIN_EMAIL) setIsAdmin(true);
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", user.id)
+        .single();
+      setIsAdmin(profile?.is_admin === true);
     });
   }, []);
 

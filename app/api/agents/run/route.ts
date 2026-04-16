@@ -3,16 +3,18 @@ import { createClient } from "@/lib/supabase/server";
 import { startCampaignRun, cleanup } from "@/lib/agents/jarvis-graph";
 import { canProcessLeads, incrementLeadsUsed } from "@/lib/subscription";
 import type { LeadData } from "@/lib/agents/state";
+import { buildComplianceEmailSuffix } from "@/lib/compliance";
+import {
+  countLeadsScheduledToday,
+  getDailyLeadProcessingCap,
+} from "@/lib/usage-limits";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 /**
  * POST /api/agents/run
- * Starts a LangGraph pipeline for a campaign.
- * Streams events back via SSE so the client gets real-time updates.
- *
- * Body: { campaignId: string }
+ * Body: { campaignId: string, dryRun?: boolean }
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -25,7 +27,10 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { campaignId } = body as { campaignId: string };
+  const { campaignId, dryRun } = body as {
+    campaignId: string;
+    dryRun?: boolean;
+  };
 
   if (!campaignId) {
     return NextResponse.json(
@@ -34,7 +39,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Fetch leads for this campaign
   const { data: rawLeads, error: leadsError } = await supabase
     .from("leads")
     .select("*")
@@ -53,6 +57,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const cap = getDailyLeadProcessingCap();
+  const usedToday = await countLeadsScheduledToday(supabase, user.id);
+  const remaining = Math.max(0, cap - usedToday);
+  if (rawLeads.length > remaining) {
+    return NextResponse.json(
+      {
+        error: `Daily lead processing cap is ${cap} (UTC day). Already scheduled ${usedToday} leads today; this run has ${rawLeads.length}. Remaining budget: ${remaining}. Try tomorrow, lower the batch, or ask support to raise DAILY_LEAD_PROCESSING_CAP.`,
+      },
+      { status: 429 }
+    );
+  }
+
   const usageCheck = await canProcessLeads(user.id, rawLeads.length);
   if (!usageCheck.allowed) {
     return NextResponse.json(
@@ -61,7 +77,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  await incrementLeadsUsed(user.id, rawLeads.length);
+  if (dryRun !== true) {
+    await incrementLeadsUsed(user.id, rawLeads.length);
+  }
 
   const leads: LeadData[] = rawLeads.map((l) => ({
     id: l.id,
@@ -74,7 +92,21 @@ export async function POST(req: NextRequest) {
     companyUrl: l.company_url,
   }));
 
-  // Create agent_run record
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("email_opt_out_footer, postal_address")
+    .eq("id", user.id)
+    .single();
+
+  const complianceEmailSuffix = buildComplianceEmailSuffix({
+    optOutLine:
+      (profile as { email_opt_out_footer?: string | null } | null)
+        ?.email_opt_out_footer ?? "",
+    postalAddress:
+      (profile as { postal_address?: string | null } | null)?.postal_address ??
+      null,
+  });
+
   const threadId = crypto.randomUUID();
   await supabase.from("agent_runs").insert({
     user_id: user.id,
@@ -82,18 +114,15 @@ export async function POST(req: NextRequest) {
     thread_id: threadId,
     status: "running",
     current_node: "supervisor",
+    leads_count: leads.length,
   });
 
-  // Update campaign status
   await supabase
     .from("campaigns")
     .update({ status: "active" })
     .eq("id", campaignId);
 
-  // Stream graph events via SSE
   const encoder = new TextEncoder();
-  // Each lead needs ~5 graph steps (supervisor→researcher→supervisor→outreach→supervisor→gate→supervisor)
-  // Leads without email need 2 steps. Add buffer.
   const recursionLimit = Math.max(leads.length * 6 + 10, 50);
 
   const stream = new ReadableStream({
@@ -105,6 +134,8 @@ export async function POST(req: NextRequest) {
           leads,
           threadId,
           recursionLimit,
+          dryRun: dryRun === true,
+          complianceEmailSuffix,
         });
 
         for await (const event of graphStream) {
@@ -116,7 +147,6 @@ export async function POST(req: NextRequest) {
           controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
         }
 
-        // Graph completed — all leads processed
         await supabase
           .from("agent_runs")
           .update({ status: "completed", current_node: "done" })

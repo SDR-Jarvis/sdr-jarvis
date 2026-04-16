@@ -104,6 +104,18 @@ export const JarvisState = Annotation.Root({
     reducer: (existing, incoming) => [...existing, ...incoming],
     default: () => [],
   }),
+
+  /** Research-only run: no LLM draft, no approval queue (saves cost). */
+  dryRun: Annotation<boolean>({
+    reducer: (_, y) => y,
+    default: () => false,
+  }),
+
+  /** Appended after model-written body (opt-out + postal address). */
+  complianceEmailSuffix: Annotation<string>({
+    reducer: (_, y) => y ?? "",
+    default: () => "",
+  }),
 });
 
 export type JarvisStateType = typeof JarvisState.State;

@@ -146,6 +146,8 @@ export async function startCampaignRun(params: {
   leads: LeadData[];
   threadId?: string;
   recursionLimit?: number;
+  dryRun?: boolean;
+  complianceEmailSuffix?: string;
 }) {
   const threadId = params.threadId ?? crypto.randomUUID();
 
@@ -160,6 +162,8 @@ export async function startCampaignRun(params: {
     leads: params.leads,
     currentLeadIndex: 0,
     messages: [],
+    dryRun: params.dryRun ?? false,
+    complianceEmailSuffix: params.complianceEmailSuffix ?? "",
   };
 
   const stream = await jarvisGraph.stream(initialState, {

@@ -12,7 +12,8 @@
     "lint": "next lint",
     "db:push": "npx supabase db push",
     "db:reset": "npx supabase db reset",
-    "db:types": "npx supabase gen types typescript --local > lib/supabase/types.ts"
+    "db:types": "npx supabase gen types typescript --local > lib/supabase/types.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@langchain/core": "^0.3.0",
@@ -41,6 +42,7 @@
     "eslint-config-next": "^15.1.0",
     "postcss": "^8.5.0",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "@playwright/test": "^1.49.0"
   }
 }

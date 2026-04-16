@@ -22,6 +22,7 @@ TONE:
 - Warm but not sycophantic. Confident but not pushy.
 - If humor fits naturally, fine. Don't force it.
 - Write at a 7th-grade reading level. Short words, short sentences.
+- Do NOT add an unsubscribe line, mailing address, or legal disclaimer — the product appends a mandatory compliance block after your body.
 
 Return ONLY valid JSON (no markdown, no explanation outside the JSON):
 {
@@ -160,12 +161,20 @@ export async function outreachNode(
       if (revMatch) {
         const revised: DraftMessage = JSON.parse(revMatch[0]);
         logger.success("outreach", `Revised draft for ${name}: "${revised.subject}"`);
-        return buildDraftResult(lead.firstName, revised);
+        return buildDraftResult(
+          lead.firstName,
+          revised,
+          state.complianceEmailSuffix ?? ""
+        );
       }
     }
 
     logger.success("outreach", `Draft ready for ${name}: "${draft.subject}"`);
-    return buildDraftResult(lead.firstName, draft);
+    return buildDraftResult(
+      lead.firstName,
+      draft,
+      state.complianceEmailSuffix ?? ""
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("outreach", `Draft failed for ${name}: ${msg}`);
@@ -200,16 +209,20 @@ function skipLeadAfterDraftFailure(
 
 function buildDraftResult(
   firstName: string,
-  draft: DraftMessage
+  draft: DraftMessage,
+  complianceSuffix: string
 ): Partial<JarvisStateType> {
+  const suffix = complianceSuffix ?? "";
+  const bodyWithCompliance = `${draft.body.trimEnd()}${suffix}`;
+  const withFooter: DraftMessage = { ...draft, body: bodyWithCompliance };
   return {
-    draftMessage: draft,
+    draftMessage: withFooter,
     messages: [
       new AIMessage(
         `Draft for ${firstName}:\n\n` +
-          `**Subject:** ${draft.subject}\n\n` +
-          `${draft.body}\n\n` +
-          `---\n_Angle: ${draft.personalizationNotes}_\n\n` +
+          `**Subject:** ${withFooter.subject}\n\n` +
+          `${withFooter.body}\n\n` +
+          `---\n_Angle: ${withFooter.personalizationNotes}_\n\n` +
           `Awaiting your call, sir. Approve, edit, or reject.`
       ),
     ],

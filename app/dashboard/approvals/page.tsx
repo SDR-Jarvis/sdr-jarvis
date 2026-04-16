@@ -19,6 +19,7 @@ interface ApprovalRecord {
     email: string | null;
     title: string | null;
     linkedin_url: string | null;
+    research_data: Record<string, unknown> | null;
   };
   campaigns: { name: string } | null;
 }
@@ -33,7 +34,7 @@ export default async function ApprovalsPage() {
   const { data: approvals } = await supabase
     .from("approvals")
     .select(
-      "*, leads(first_name, last_name, company, email, title, linkedin_url), campaigns(name)"
+      "*, leads(first_name, last_name, company, email, title, linkedin_url, research_data), campaigns(name)"
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
@@ -121,6 +122,36 @@ export default async function ApprovalsPage() {
   );
 }
 
+function ResearchSnippet({
+  research,
+}: {
+  research: Record<string, unknown> | null | undefined;
+}) {
+  if (!research || typeof research !== "object") return null;
+  const summary = typeof research.summary === "string" ? research.summary : null;
+  const points = Array.isArray(research.talkingPoints)
+    ? (research.talkingPoints as string[]).slice(0, 3)
+    : [];
+  if (!summary && points.length === 0) return null;
+  return (
+    <div className="rounded-md border border-jarvis-blue/20 bg-jarvis-blue/[0.06] p-3 text-xs text-jarvis-muted">
+      <p className="font-semibold uppercase tracking-wider text-jarvis-blue/80">
+        Research context
+      </p>
+      {summary && (
+        <p className="mt-2 leading-relaxed text-jarvis-muted">{summary}</p>
+      )}
+      {points.length > 0 && (
+        <ul className="mt-2 list-inside list-disc space-y-1 text-jarvis-muted/90">
+          {points.map((p, i) => (
+            <li key={i}>{p}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ApprovalCard({ approval }: { approval: ApprovalRecord }) {
   const lead = approval.leads;
   const campaign = approval.campaigns;
@@ -165,6 +196,8 @@ function ApprovalCard({ approval }: { approval: ApprovalRecord }) {
           )}
         </div>
       </div>
+
+      <ResearchSnippet research={lead?.research_data} />
 
       <div className="rounded-md border border-jarvis-border bg-jarvis-dark p-4">
         <p className="text-sm font-medium text-jarvis-blue">

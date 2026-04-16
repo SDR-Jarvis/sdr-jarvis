@@ -12,8 +12,7 @@ import {
   Clock,
   Shield,
 } from "lucide-react";
-
-const ADMIN_EMAIL = "ronith.reagan@gmail.com";
+import { userHasAdminAccess } from "@/lib/admin-access";
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -21,7 +20,8 @@ export default async function AdminPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
-  if (user.email !== ADMIN_EMAIL) redirect("/dashboard");
+  const allowed = await userHasAdminAccess(supabase, user.id, user.email ?? undefined);
+  if (!allowed) redirect("/dashboard");
 
   // Fetch all stats in parallel
   const [

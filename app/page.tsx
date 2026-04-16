@@ -249,7 +249,7 @@ export default function LandingPage() {
             num={2}
             icon={Brain}
             title="Jarvis Researches & Writes"
-            description="AI searches Google, LinkedIn, and company sites. Then writes a personalized 3-5 sentence email for each lead — no templates, no filler."
+            description="AI uses public web search and pages you supply (company sites, etc.) — not logged-in LinkedIn automation. Personalized 3–5 sentence drafts; you verify facts."
           />
           <StepCard
             num={3}
@@ -286,7 +286,7 @@ export default function LandingPage() {
             <FeatureCard
               icon={Brain}
               title="Deep Research"
-              description="Google-powered scraping of LinkedIn profiles, company websites, funding data, and recent news — before a single word is written."
+              description="Public-web research (Google CSE, company sites, news). No promise of private LinkedIn access — use public profiles and URLs you provide."
             />
             <FeatureCard
               icon={Mail}
@@ -500,9 +500,19 @@ export default function LandingPage() {
             </div>
             <span className="text-sm font-bold text-white">SDR Jarvis</span>
           </div>
-          <p className="text-xs text-jarvis-muted/40">
-            AI-powered outbound for solo founders — your first sales hire, minus the salary.
-          </p>
+          <div className="flex flex-col items-center gap-2 sm:items-end">
+            <p className="text-xs text-jarvis-muted/40 text-center sm:text-right">
+              AI-powered outbound for solo founders — your first sales hire, minus the salary.
+            </p>
+            <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-jarvis-muted/50">
+              <a href="/legal/privacy" className="hover:text-jarvis-blue transition-colors">
+                Privacy
+              </a>
+              <a href="/legal/email-compliance" className="hover:text-jarvis-blue transition-colors">
+                Email compliance
+              </a>
+            </div>
+          </div>
         </div>
       </footer>
     </div>

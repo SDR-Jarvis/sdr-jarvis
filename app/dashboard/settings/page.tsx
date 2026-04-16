@@ -15,11 +15,12 @@ import {
   ExternalLink,
   CreditCard,
   Mail,
+  Shield,
 } from "lucide-react";
 import { BillingTab } from "./billing-tab";
 import { TestEmailButton } from "../test-email-button";
 
-type Tab = "profile" | "domain" | "billing";
+type Tab = "profile" | "domain" | "billing" | "compliance";
 
 export default function SettingsPage() {
   return (
@@ -50,6 +51,13 @@ function SettingsContent() {
   const [formality, setFormality] = useState("professional-casual");
   const [humor, setHumor] = useState(true);
   const [signoff, setSignoff] = useState("Best");
+  const [optOutFooter, setOptOutFooter] = useState(
+    'If this isn\'t relevant, reply "no thanks" and I won\'t follow up again.'
+  );
+  const [postalAddress, setPostalAddress] = useState("");
+  const [warmupDailyCap, setWarmupDailyCap] = useState(20);
+  const [savingCompliance, setSavingCompliance] = useState(false);
+  const [savedCompliance, setSavedCompliance] = useState(false);
 
   useEffect(() => {
     async function loadProfile() {
@@ -74,6 +82,13 @@ function SettingsContent() {
         setFormality((tone.formality as string) ?? "professional-casual");
         setHumor(tone.humor !== false);
         setSignoff((tone.signoff as string) ?? "Best");
+        const ext = profile as Record<string, unknown>;
+        if (typeof ext.email_opt_out_footer === "string" && ext.email_opt_out_footer)
+          setOptOutFooter(ext.email_opt_out_footer);
+        if (typeof ext.postal_address === "string")
+          setPostalAddress(ext.postal_address);
+        if (typeof ext.warmup_daily_send_cap === "number")
+          setWarmupDailyCap(ext.warmup_daily_send_cap);
       }
       setLoading(false);
     }
@@ -105,6 +120,34 @@ function SettingsContent() {
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+  }
+
+  async function handleSaveCompliance() {
+    setSavingCompliance(true);
+    setSavedCompliance(false);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const line = optOutFooter.trim();
+    if (!line) {
+      setSavingCompliance(false);
+      return;
+    }
+
+    await supabase
+      .from("profiles")
+      .update({
+        email_opt_out_footer: line,
+        postal_address: postalAddress.trim() || null,
+        warmup_daily_send_cap: Math.min(500, Math.max(1, warmupDailyCap)),
+      })
+      .eq("id", user.id);
+
+    setSavingCompliance(false);
+    setSavedCompliance(true);
+    setTimeout(() => setSavedCompliance(false), 3000);
   }
 
   if (loading) {
@@ -143,6 +186,12 @@ function SettingsContent() {
           onClick={() => setTab("domain")}
           icon={Globe}
           label="Email Domain"
+        />
+        <TabButton
+          active={tab === "compliance"}
+          onClick={() => setTab("compliance")}
+          icon={Shield}
+          label="Compliance"
         />
       </div>
 
@@ -333,6 +382,109 @@ function SettingsContent() {
       {tab === "billing" && <BillingTab />}
 
       {tab === "domain" && <DomainSetupGuide />}
+
+      {tab === "compliance" && (
+        <div className="space-y-6">
+          <div className="jarvis-card space-y-4">
+            <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-jarvis-muted">
+              <Shield className="h-4 w-4" />
+              Compliance &amp; deliverability
+            </h2>
+            <p className="text-sm text-jarvis-muted leading-relaxed">
+              Jarvis <strong className="text-white">appends</strong> your opt-out line and postal
+              address to every draft. You are responsible for lawful outreach — read{" "}
+              <a
+                href="/legal/email-compliance"
+                className="text-jarvis-blue hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Email compliance
+              </a>
+              .
+            </p>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">
+                Opt-out line (required)
+              </label>
+              <textarea
+                value={optOutFooter}
+                onChange={(e) => setOptOutFooter(e.target.value)}
+                rows={3}
+                className="jarvis-input resize-none text-sm"
+              />
+              <p className="mt-1 text-xs text-jarvis-muted/50">
+                Shown after the message body. Do not remove opt-out intent.
+              </p>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">
+                Physical mailing address
+              </label>
+              <textarea
+                value={postalAddress}
+                onChange={(e) => setPostalAddress(e.target.value)}
+                placeholder="Company legal name, street, city, region, postal code, country"
+                rows={3}
+                className="jarvis-input resize-none text-sm"
+              />
+              <p className="mt-1 text-xs text-jarvis-muted/50">
+                Required for many jurisdictions (e.g. CAN-SPAM). Shown below the opt-out line.
+              </p>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">
+                Max sends per day (warmup guardrail)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={warmupDailyCap}
+                onChange={(e) => setWarmupDailyCap(parseInt(e.target.value, 10) || 1)}
+                className="jarvis-input max-w-xs"
+              />
+              <p className="mt-1 text-xs text-jarvis-muted/50">
+                UTC day. Start low (e.g. 5–20) on a new domain; increase as reputation builds.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              {savedCompliance && (
+                <span className="text-sm text-jarvis-success">Saved.</span>
+              )}
+              <button
+                type="button"
+                onClick={handleSaveCompliance}
+                disabled={savingCompliance || !optOutFooter.trim()}
+                className="jarvis-btn-primary"
+              >
+                {savingCompliance ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Save compliance settings
+              </button>
+            </div>
+          </div>
+          <div className="jarvis-card text-sm text-jarvis-muted leading-relaxed">
+            <p className="font-medium text-white">Domain authentication</p>
+            <p className="mt-2">
+              Configure SPF, DKIM, and DMARC on a <strong className="text-white">separate</strong>{" "}
+              sending domain where possible. Follow the{" "}
+              <button
+                type="button"
+                onClick={() => setTab("domain")}
+                className="text-jarvis-blue hover:underline"
+              >
+                Email Domain
+              </button>{" "}
+              tab. Daily <strong className="text-white">pipeline</strong> volume is also capped
+              server-side (see <code className="rounded bg-white/5 px-1">DAILY_LEAD_PROCESSING_CAP</code>).
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -426,7 +578,7 @@ function DomainSetupGuide() {
     {
       num: 6,
       title: "Warm up your domain",
-      body: "Start by sending 10-20 emails/day for the first week, then gradually increase. Sudden volume spikes from a new domain trigger spam filters.",
+      body: "Start low (e.g. 5–20 sends/day), then ramp gradually. Jarvis enforces your per-day send cap from Settings → Compliance; keep pipeline batches small on new domains.",
     },
   ];
 

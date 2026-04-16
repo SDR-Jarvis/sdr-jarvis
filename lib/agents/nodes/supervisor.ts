@@ -1,6 +1,7 @@
 import { AIMessage } from "@langchain/core/messages";
 import { createLLMClient, JARVIS_SYSTEM_PROMPT } from "@/lib/llm";
 import { logger } from "@/lib/logger";
+import { createServiceClient } from "@/lib/supabase/server";
 import type { JarvisStateType } from "../state";
 
 export async function supervisorNode(
@@ -49,6 +50,36 @@ export async function supervisorNode(
       nextAgent: "researcher",
       messages: [
         new AIMessage(`[${idx}/${total}] Pulling intel on ${name}${lead.company ? ` at ${lead.company}` : ""}…`),
+      ],
+    };
+  }
+
+  // Dry run: persist research, skip drafting and approval queue
+  if (state.dryRun && state.researchData && !state.draftMessage) {
+    logger.step("supervisor", `[${idx}/${total}] ${name} — dry run, research only`);
+    try {
+      const supabase = createServiceClient();
+      await supabase
+        .from("leads")
+        .update({
+          status: "researched",
+          research_data: state.researchData,
+          enrichment_score: state.researchData.score,
+        })
+        .eq("id", lead.id);
+    } catch (e) {
+      logger.error("supervisor", `Dry run lead update failed: ${e}`);
+    }
+    return {
+      currentLeadIndex: state.currentLeadIndex + 1,
+      researchData: null,
+      draftMessage: null,
+      approvalStatus: "none",
+      nextAgent: "supervisor",
+      messages: [
+        new AIMessage(
+          `[${idx}/${total}] Dry run — saved research for ${lead.firstName}, skipped draft.`
+        ),
       ],
     };
   }
