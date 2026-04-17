@@ -1,0 +1,28 @@
+{
+  "name": "Outlook on the web: bare From/Sent/To/Subject header block (no dashes)",
+  "email": {
+    "object": "email",
+    "id": "rcv_03",
+    "to": ["bob@sdr-jarvis.dev"],
+    "from": "Marco Rossi <marco@orbital.io>",
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "subject": "Re: Quick question",
+    "message_id": "<OWA-xyz@orbital.io>",
+    "created_at": "2026-04-16T12:10:00.000Z",
+    "text": "Not a priority this quarter, try me in Q3.\n\nFrom: Bob Smith <bob@sdr-jarvis.dev>\nSent: Monday, January 6, 2025 10:14 AM\nTo: Marco Rossi <marco@orbital.io>\nSubject: Quick question\n\nHi Marco,\n\nQuick one — are you the right person for outbound tooling at Orbital?\n\n— Bob\n",
+    "html": null,
+    "headers": {
+      "from": "Marco Rossi <marco@orbital.io>",
+      "subject": "Re: Quick question"
+    }
+  },
+  "expect": {
+    "isAutoReply": false,
+    "signatureRemoved": false,
+    "cleanTextIncludes": ["Not a priority this quarter"],
+    "cleanTextExcludes": ["From: Bob Smith", "outbound tooling"],
+    "quotedTrailIncludes": ["From: Bob Smith", "Sent: Monday", "outbound tooling"]
+  }
+}

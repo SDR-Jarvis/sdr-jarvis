@@ -1,0 +1,30 @@
+{
+  "name": "Gmail: standard 'On ... wrote:' attribution with > quoted body",
+  "email": {
+    "object": "email",
+    "id": "rcv_01",
+    "to": ["bob@sdr-jarvis.dev"],
+    "from": "Alice Chen <alice@acme.com>",
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "subject": "Re: Quick intro — Acme x SDR Jarvis",
+    "message_id": "<CAF+abc123@mail.gmail.com>",
+    "created_at": "2026-04-16T12:00:00.000Z",
+    "text": "Thanks for reaching out. Tuesday at 2pm PT works.\n\nOn Mon, Jan 6, 2025 at 10:14 AM Bob Smith <bob@sdr-jarvis.dev> wrote:\n> Hi Alice,\n>\n> Saw your recent post on pricing experiments — we help teams run those\n> without engineering. Worth 15 min next week?\n>\n> — Bob\n",
+    "html": null,
+    "headers": {
+      "from": "Alice Chen <alice@acme.com>",
+      "subject": "Re: Quick intro — Acme x SDR Jarvis",
+      "in-reply-to": "<outbound-xyz@resend.dev>",
+      "references": "<outbound-xyz@resend.dev>"
+    }
+  },
+  "expect": {
+    "isAutoReply": false,
+    "signatureRemoved": false,
+    "cleanTextIncludes": ["Tuesday at 2pm PT works"],
+    "cleanTextExcludes": ["wrote:", "Hi Alice", "pricing experiments"],
+    "quotedTrailIncludes": ["On Mon, Jan 6, 2025", "pricing experiments"]
+  }
+}

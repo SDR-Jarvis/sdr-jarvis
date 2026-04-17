@@ -1,0 +1,28 @@
+{
+  "name": "RFC 3676 signature delimiter (two dashes + space) is stripped",
+  "email": {
+    "object": "email",
+    "id": "rcv_05",
+    "to": ["bob@sdr-jarvis.dev"],
+    "from": "Jordan Park <jordan@lumen.dev>",
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "subject": "Re: Intro",
+    "message_id": "<rfc3676-xyz@lumen.dev>",
+    "created_at": "2026-04-16T12:20:00.000Z",
+    "text": "Happy to chat. Friday morning works.\n\n-- \nJordan Park\nHead of Ops, Lumen\n+1 415 555 0199\nhttps://lumen.dev\n",
+    "html": null,
+    "headers": {
+      "from": "Jordan Park <jordan@lumen.dev>",
+      "subject": "Re: Intro"
+    }
+  },
+  "expect": {
+    "isAutoReply": false,
+    "signatureRemoved": true,
+    "cleanTextIncludes": ["Happy to chat", "Friday morning works"],
+    "cleanTextExcludes": ["Jordan Park", "Head of Ops", "+1 415"],
+    "quotedTrailEmpty": true
+  }
+}

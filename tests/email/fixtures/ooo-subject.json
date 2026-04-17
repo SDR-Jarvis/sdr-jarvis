@@ -1,0 +1,27 @@
+{
+  "name": "Out-of-office subject marks message as auto-reply even without special headers",
+  "email": {
+    "object": "email",
+    "id": "rcv_08",
+    "to": ["bob@sdr-jarvis.dev"],
+    "from": "Raj Singh <raj@helios.net>",
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "subject": "Out of Office: Re: Quick intro",
+    "message_id": "<ooo-xyz@helios.net>",
+    "created_at": "2026-04-16T12:35:00.000Z",
+    "text": "Thanks for your note. I'm out of office until April 25 with limited email access.\nFor urgent issues please reach out to ava@helios.net.\n",
+    "html": null,
+    "headers": {
+      "from": "Raj Singh <raj@helios.net>",
+      "subject": "Out of Office: Re: Quick intro"
+    }
+  },
+  "expect": {
+    "isAutoReply": true,
+    "signatureRemoved": false,
+    "cleanTextIncludes": ["out of office until April 25", "ava@helios.net"],
+    "quotedTrailEmpty": true
+  }
+}

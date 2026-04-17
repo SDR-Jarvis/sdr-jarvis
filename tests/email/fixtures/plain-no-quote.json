@@ -1,0 +1,27 @@
+{
+  "name": "Plain reply with no quoted trail — cleanText is the whole body, trail is empty",
+  "email": {
+    "object": "email",
+    "id": "rcv_10",
+    "to": ["bob@sdr-jarvis.dev"],
+    "from": "Morgan Lee <morgan@pearl.so>",
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "subject": "Re: hey",
+    "message_id": "<plain-xyz@pearl.so>",
+    "created_at": "2026-04-16T12:45:00.000Z",
+    "text": "Unsubscribe. Do not contact me again.\n",
+    "html": null,
+    "headers": {
+      "from": "Morgan Lee <morgan@pearl.so>",
+      "subject": "Re: hey"
+    }
+  },
+  "expect": {
+    "isAutoReply": false,
+    "signatureRemoved": false,
+    "cleanTextIncludes": ["Unsubscribe", "Do not contact me again"],
+    "quotedTrailEmpty": true
+  }
+}

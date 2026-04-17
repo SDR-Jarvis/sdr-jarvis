@@ -1,0 +1,28 @@
+{
+  "name": "Apple Mail / plain text: nested > quotes with no attribution line",
+  "email": {
+    "object": "email",
+    "id": "rcv_04",
+    "to": ["bob@sdr-jarvis.dev"],
+    "from": "Priya Patel <priya@stellar.ai>",
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "subject": "Re: checking in",
+    "message_id": "<apple-mail-xyz@stellar.ai>",
+    "created_at": "2026-04-16T12:15:00.000Z",
+    "text": "Agreed on point 2. Pushing back on point 3 — we already have vendor lock-in concerns.\n\n> On Jan 6, 2025, at 10:14 AM, Bob <bob@sdr-jarvis.dev> wrote:\n>\n> Three quick points:\n> 1. Pricing is flexible\n> 2. We integrate with Salesforce\n> 3. You can self-host for enterprise\n>\n>> On Jan 5, 2025, at 9:00 AM, Priya <priya@stellar.ai> wrote:\n>>\n>> Can you give me the short version?\n",
+    "html": null,
+    "headers": {
+      "from": "Priya Patel <priya@stellar.ai>",
+      "subject": "Re: checking in"
+    }
+  },
+  "expect": {
+    "isAutoReply": false,
+    "signatureRemoved": false,
+    "cleanTextIncludes": ["Agreed on point 2", "vendor lock-in"],
+    "cleanTextExcludes": ["Three quick points", "self-host", "short version"],
+    "quotedTrailIncludes": ["Three quick points", "self-host", "short version"]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "HTML-only reply from Gmail (text is null): blockquote drives quote split",
+  "email": {
+    "object": "email",
+    "id": "rcv_09",
+    "to": ["bob@sdr-jarvis.dev"],
+    "from": "Nina Wallace <nina@argo.build>",
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "subject": "Re: Argo x SDR Jarvis",
+    "message_id": "<gmail-html-xyz@mail.gmail.com>",
+    "created_at": "2026-04-16T12:40:00.000Z",
+    "text": null,
+    "html": "<div dir=\"ltr\">Happy to take a look. Can you send a 60-second loom?</div><br><div class=\"gmail_quote\"><div dir=\"ltr\" class=\"gmail_attr\">On Mon, Jan 6, 2025 at 10:14 AM Bob Smith &lt;bob@sdr-jarvis.dev&gt; wrote:<br></div><blockquote class=\"gmail_quote\"><div dir=\"ltr\">Hi Nina,<br><br>Built something we think could cut your SDR ramp time — curious if you&#39;d want a walkthrough.<br><br>&mdash; Bob</div></blockquote></div>",
+    "headers": {
+      "from": "Nina Wallace <nina@argo.build>",
+      "subject": "Re: Argo x SDR Jarvis"
+    }
+  },
+  "expect": {
+    "isAutoReply": false,
+    "signatureRemoved": false,
+    "cleanTextIncludes": ["60-second loom"],
+    "cleanTextExcludes": ["ramp time", "walkthrough"],
+    "quotedTrailIncludes": ["ramp time"]
+  }
+}

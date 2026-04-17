@@ -1,0 +1,29 @@
+{
+  "name": "Auto-Submitted: auto-replied header marks message as auto-reply",
+  "email": {
+    "object": "email",
+    "id": "rcv_07",
+    "to": ["bob@sdr-jarvis.dev"],
+    "from": "Taylor Nguyen <taylor@meridian.co>",
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "subject": "Re: Your outreach",
+    "message_id": "<autoreply-xyz@meridian.co>",
+    "created_at": "2026-04-16T12:30:00.000Z",
+    "text": "I'm on leave until April 22. For urgent matters contact ops@meridian.co.\n",
+    "html": null,
+    "headers": {
+      "from": "Taylor Nguyen <taylor@meridian.co>",
+      "subject": "Re: Your outreach",
+      "auto-submitted": "auto-replied",
+      "x-autoreply-from": "taylor@meridian.co"
+    }
+  },
+  "expect": {
+    "isAutoReply": true,
+    "signatureRemoved": false,
+    "cleanTextIncludes": ["on leave until April 22"],
+    "quotedTrailEmpty": true
+  }
+}

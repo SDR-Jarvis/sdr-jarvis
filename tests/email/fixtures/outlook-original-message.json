@@ -1,0 +1,29 @@
+{
+  "name": "Outlook desktop: -----Original Message----- divider then From/Sent/To/Subject block",
+  "email": {
+    "object": "email",
+    "id": "rcv_02",
+    "to": ["bob@sdr-jarvis.dev"],
+    "from": "Dana Lin <dana@northwind.co>",
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "subject": "RE: Following up",
+    "message_id": "<OUTLOOK-xyz@northwind.co>",
+    "created_at": "2026-04-16T12:05:00.000Z",
+    "text": "Interested. Can you share a one-pager?\r\n\r\n-----Original Message-----\r\nFrom: Bob Smith <bob@sdr-jarvis.dev>\r\nSent: Monday, January 6, 2025 10:14 AM\r\nTo: Dana Lin <dana@northwind.co>\r\nSubject: Following up\r\n\r\nHi Dana,\r\n\r\nNoticed Northwind just raised a Series B — congrats. Would love to share\r\nhow we help post-Series-B teams scale outbound without hiring SDRs.\r\n\r\nBest,\r\nBob\r\n",
+    "html": null,
+    "headers": {
+      "from": "Dana Lin <dana@northwind.co>",
+      "subject": "RE: Following up",
+      "in-reply-to": "<outbound-abc@resend.dev>"
+    }
+  },
+  "expect": {
+    "isAutoReply": false,
+    "signatureRemoved": false,
+    "cleanTextIncludes": ["Interested", "one-pager"],
+    "cleanTextExcludes": ["Original Message", "From:", "Noticed Northwind"],
+    "quotedTrailIncludes": ["-----Original Message-----", "From: Bob Smith", "Noticed Northwind"]
+  }
+}

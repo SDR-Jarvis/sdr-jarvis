@@ -1,0 +1,28 @@
+{
+  "name": "Mobile footer 'Sent from my iPhone' is stripped",
+  "email": {
+    "object": "email",
+    "id": "rcv_06",
+    "to": ["bob@sdr-jarvis.dev"],
+    "from": "Sam Rivera <sam@flux.io>",
+    "cc": [],
+    "bcc": [],
+    "reply_to": [],
+    "subject": "Re: demo?",
+    "message_id": "<iphone-xyz@flux.io>",
+    "created_at": "2026-04-16T12:25:00.000Z",
+    "text": "Yes please send a calendar link.\n\nSent from my iPhone",
+    "html": null,
+    "headers": {
+      "from": "Sam Rivera <sam@flux.io>",
+      "subject": "Re: demo?"
+    }
+  },
+  "expect": {
+    "isAutoReply": false,
+    "signatureRemoved": true,
+    "cleanTextIncludes": ["Yes please send a calendar link"],
+    "cleanTextExcludes": ["Sent from my iPhone"],
+    "quotedTrailEmpty": true
+  }
+}
