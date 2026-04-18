@@ -399,21 +399,57 @@ function getResend() {
   return _resend;
 }
 
+import {
+  generateRfcMessageId,
+  extractSenderDomain,
+} from "@/lib/email/message-id";
+
+/**
+ * Send an email via Resend.
+ *
+ * This function is the single place in the codebase where an RFC 822
+ * `Message-Id` is generated. We set it ourselves via Resend's `headers`
+ * option so we know the exact value that goes on the wire — Resend's SDK
+ * response only contains an internal UUID (`data.id`) and does not expose
+ * the Message-Id header. Callers persist the returned `rfcMessageId` onto
+ * `interactions.metadata.rfcMessageId` so inbound replies can be threaded
+ * back via `In-Reply-To` / `References`.
+ *
+ * When replying in a thread, pass `inReplyTo` and `references` built by
+ * `buildThreadHeaders` (from `lib/email/message-id.ts`). Both are set
+ * verbatim on the outgoing message headers.
+ */
 export async function sendEmail(params: {
   to: string;
   subject: string;
   body: string;
   replyTo?: string;
-}): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  inReplyTo?: string;
+  references?: string;
+}): Promise<{
+  success: boolean;
+  messageId?: string;
+  rfcMessageId?: string;
+  error?: string;
+}> {
   logger.step("send", `Sending email to ${params.to} — "${params.subject}"`);
+
+  const from = process.env.FROM_EMAIL || "onboarding@resend.dev";
+  const domain = extractSenderDomain(from);
+  const rfcMessageId = generateRfcMessageId(domain);
+
+  const headers: Record<string, string> = { "Message-Id": rfcMessageId };
+  if (params.inReplyTo) headers["In-Reply-To"] = params.inReplyTo;
+  if (params.references) headers["References"] = params.references;
 
   try {
     const { data, error } = await getResend().emails.send({
-      from: process.env.FROM_EMAIL || "onboarding@resend.dev",
+      from,
       to: params.to,
       subject: params.subject,
       html: params.body.replace(/\n/g, "<br>"),
       replyTo: params.replyTo || process.env.REPLY_TO_EMAIL,
+      headers,
     });
 
     if (error) {
@@ -421,8 +457,11 @@ export async function sendEmail(params: {
       return { success: false, error: error.message };
     }
 
-    logger.success("send", `Email delivered — ID: ${data?.id}`);
-    return { success: true, messageId: data?.id };
+    logger.success(
+      "send",
+      `Email delivered — resend_id=${data?.id} rfc_message_id=${rfcMessageId}`
+    );
+    return { success: true, messageId: data?.id, rfcMessageId };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("send", `Email exception: ${msg}`);

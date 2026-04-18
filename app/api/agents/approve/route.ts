@@ -199,7 +199,12 @@ export async function POST(req: NextRequest) {
     .update({
       status: result.success ? "sent" : "failed",
       sent_at: result.success ? new Date().toISOString() : null,
-      metadata: { ...existingMeta, messageId: result.messageId, error: result.error },
+      metadata: {
+        ...existingMeta,
+        messageId: result.messageId,
+        rfcMessageId: result.rfcMessageId,
+        error: result.error,
+      },
     })
     .eq("id", approval.interaction_id);
 
