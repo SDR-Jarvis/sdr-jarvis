@@ -1,6 +1,7 @@
 import { AIMessage } from "@langchain/core/messages";
 import { createLLMClient } from "@/lib/llm";
 import { logger } from "@/lib/logger";
+import { appendSignaturePlain } from "@/lib/email/signature";
 import type { JarvisStateType, DraftMessage } from "../state";
 
 const INITIAL_OUTREACH_PROMPT = `You write cold emails for B2B sales. You are exceptionally good at it because you follow these rules without exception:
@@ -164,7 +165,8 @@ export async function outreachNode(
         return buildDraftResult(
           lead.firstName,
           revised,
-          state.complianceEmailSuffix ?? ""
+          state.complianceEmailSuffix ?? "",
+          state.senderDisplayName ?? ""
         );
       }
     }
@@ -173,7 +175,8 @@ export async function outreachNode(
     return buildDraftResult(
       lead.firstName,
       draft,
-      state.complianceEmailSuffix ?? ""
+      state.complianceEmailSuffix ?? "",
+      state.senderDisplayName ?? ""
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -210,10 +213,12 @@ function skipLeadAfterDraftFailure(
 function buildDraftResult(
   firstName: string,
   draft: DraftMessage,
-  complianceSuffix: string
+  complianceSuffix: string,
+  senderDisplayName: string
 ): Partial<JarvisStateType> {
   const suffix = complianceSuffix ?? "";
-  const bodyWithCompliance = `${draft.body.trimEnd()}${suffix}`;
+  const mainSigned = appendSignaturePlain(draft.body, senderDisplayName);
+  const bodyWithCompliance = `${mainSigned.trimEnd()}${suffix}`;
   const withFooter: DraftMessage = { ...draft, body: bodyWithCompliance };
   return {
     draftMessage: withFooter,

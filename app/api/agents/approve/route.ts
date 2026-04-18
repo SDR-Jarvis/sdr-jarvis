@@ -4,7 +4,12 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/agents/tools";
 import { logger } from "@/lib/logger";
 import { canSendEmail, incrementEmailsSent } from "@/lib/subscription";
-import { ensureComplianceInBody } from "@/lib/compliance";
+import {
+  ensureComplianceInBody,
+  splitMainAndComplianceBlock,
+} from "@/lib/compliance";
+import { appendSignaturePlain, resolveSenderName } from "@/lib/email/signature";
+import { sendSlackNotification } from "@/lib/slack";
 import { countSendsTodayUtc } from "@/lib/usage-limits";
 
 export const runtime = "nodejs";
@@ -119,7 +124,7 @@ export async function POST(req: NextRequest) {
 
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("email_opt_out_footer, postal_address, warmup_daily_send_cap")
+    .select("email_opt_out_footer, postal_address, warmup_daily_send_cap, full_name")
     .eq("id", user.id)
     .single();
 
@@ -136,7 +141,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const bodyToSend = ensureComplianceInBody(emailBody ?? "", {
+  const senderName = resolveSenderName(
+    (profileRow as { full_name?: string | null } | null)?.full_name
+  );
+  const { main: mainBeforeSend, compliance: complianceBlock } =
+    splitMainAndComplianceBlock(emailBody ?? "");
+  const mainSigned = appendSignaturePlain(mainBeforeSend, senderName);
+  const mergedBody = complianceBlock
+    ? `${mainSigned.trimEnd()}${complianceBlock}`
+    : mainSigned;
+
+  const bodyToSend = ensureComplianceInBody(mergedBody, {
     optOutLine:
       (profileRow as { email_opt_out_footer?: string } | null)
         ?.email_opt_out_footer ?? "",
@@ -234,6 +249,33 @@ export async function POST(req: NextRequest) {
   if (result.success) {
     await incrementEmailsSent(user.id);
     logger.success("approval", `Email sent to ${lead.email}`);
+
+    const { data: dupSlack } = await serviceClient
+      .from("audit_log")
+      .select("id")
+      .eq("action", "slack_email_sent_notify")
+      .eq("resource_id", approvalId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!dupSlack) {
+      const { data: campRow } = await serviceClient
+        .from("campaigns")
+        .select("name")
+        .eq("id", approval.campaign_id)
+        .single();
+      const campaignLabel = campRow?.name ?? "Campaign";
+      void sendSlackNotification(
+        `✅ 1 email(s) sent · Campaign: ${campaignLabel}`
+      );
+      await serviceClient.from("audit_log").insert({
+        user_id: user.id,
+        action: "slack_email_sent_notify",
+        resource_type: "approval",
+        resource_id: approvalId,
+        details: { campaign_id: approval.campaign_id },
+      });
+    }
   } else {
     logger.error("approval", `Send failed: ${result.error}`);
   }

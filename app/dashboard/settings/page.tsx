@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { BillingTab } from "./billing-tab";
 import { TestEmailButton } from "../test-email-button";
+import { TestSlackButton } from "../test-slack-button";
 
 type Tab = "profile" | "domain" | "billing" | "compliance";
 
@@ -206,6 +207,12 @@ function SettingsContent() {
               Sends one message to your login email so you can confirm Resend and your domain are working before you email leads.
             </p>
             <TestEmailButton />
+            <div className="border-t border-white/10 pt-4">
+              <p className="mb-2 text-sm text-jarvis-muted">
+                Requires <code className="text-xs text-jarvis-blue">SLACK_WEBHOOK_URL</code> in your deployment env. If unset, the server logs that Slack is not configured.
+              </p>
+              <TestSlackButton />
+            </div>
           </div>
 
           {/* Profile */}

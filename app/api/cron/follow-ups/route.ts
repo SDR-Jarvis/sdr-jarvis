@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { createLLMClient } from "@/lib/llm";
-import { sendEmail } from "@/lib/agents/tools";
 import { logger } from "@/lib/logger";
+import { buildComplianceEmailSuffix } from "@/lib/compliance";
+import { appendSignaturePlain, resolveSenderName } from "@/lib/email/signature";
+import { sendSlackNotification } from "@/lib/slack";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -174,6 +176,37 @@ export async function GET(req: NextRequest) {
 
     let processed = 0;
     let errors = 0;
+    const profileCache = new Map<
+      string,
+      {
+        full_name: string | null;
+        email_opt_out_footer: string;
+        postal_address: string | null;
+      }
+    >();
+
+    async function getProfile(userId: string) {
+      const hit = profileCache.get(userId);
+      if (hit) return hit;
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name, email_opt_out_footer, postal_address")
+        .eq("id", userId)
+        .single();
+      const row = {
+        full_name: data?.full_name ?? null,
+        email_opt_out_footer:
+          (data as { email_opt_out_footer?: string } | null)
+            ?.email_opt_out_footer ?? "",
+        postal_address:
+          (data as { postal_address?: string | null } | null)?.postal_address ??
+          null,
+      };
+      profileCache.set(userId, row);
+      return row;
+    }
+
+    const slackByCampaign = new Map<string, number>();
 
     for (const candidate of candidates) {
       try {
@@ -215,6 +248,16 @@ export async function GET(req: NextRequest) {
           personalizationNotes: string;
         };
 
+        const prof = await getProfile(candidate.user_id);
+        const signed = appendSignaturePlain(
+          draft.body,
+          resolveSenderName(prof.full_name)
+        );
+        const fullBody = `${signed.trimEnd()}${buildComplianceEmailSuffix({
+          optOutLine: prof.email_opt_out_footer,
+          postalAddress: prof.postal_address,
+        })}`;
+
         const { data: interaction } = await supabase
           .from("interactions")
           .insert({
@@ -225,7 +268,7 @@ export async function GET(req: NextRequest) {
             status: "pending_approval",
             sequence_step: nextStep,
             subject: draft.subject,
-            body: draft.body,
+            body: fullBody,
             metadata: {
               channel: draft.channel,
               personalization: draft.personalizationNotes,
@@ -244,7 +287,7 @@ export async function GET(req: NextRequest) {
             campaign_id: candidate.campaign_id,
             status: "pending",
             preview_subject: draft.subject,
-            preview_body: draft.body,
+            preview_body: fullBody,
             channel: draft.channel || "email",
             agent_notes: `Follow-up ${nextStep}/${candidate.sequence_config.steps}: ${draft.personalizationNotes}`,
           });
@@ -270,12 +313,40 @@ export async function GET(req: NextRequest) {
         });
 
         processed++;
+        slackByCampaign.set(
+          candidate.campaign_name,
+          (slackByCampaign.get(candidate.campaign_name) ?? 0) + 1
+        );
         logger.success("cron", `Follow-up queued for ${candidate.lead_first_name} (step ${nextStep})`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error("cron", `Failed for ${candidate.lead_first_name}: ${msg}`);
         errors++;
       }
+    }
+
+    const dayKey = new Date().toISOString().slice(0, 10);
+    const { data: dupFollowSlack } = await supabase
+      .from("audit_log")
+      .select("id")
+      .eq("action", "slack_followup_batch")
+      .contains("details", { date_utc: dayKey })
+      .limit(1)
+      .maybeSingle();
+
+    if (processed > 0 && !dupFollowSlack) {
+      const base =
+        process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+      const lines = Array.from(slackByCampaign.entries())
+        .map(([name, n]) => `· ${name}: ${n} follow-up draft(s)`)
+        .join("\n");
+      void sendSlackNotification(
+        `🟡 SDR Jarvis — ${processed} follow-up draft(s) ready for approval\n${lines}\n→ Review: ${base}/dashboard/approvals`
+      );
+      await supabase.from("audit_log").insert({
+        action: "slack_followup_batch",
+        details: { date_utc: dayKey, processed },
+      });
     }
 
     return NextResponse.json({

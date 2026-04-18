@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/agents/tools";
+import { appendSignaturePlain, resolveSenderName } from "@/lib/email/signature";
 
 export const runtime = "nodejs";
 
@@ -24,18 +25,28 @@ export async function POST() {
     );
   }
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .single();
+
+  const sender = resolveSenderName(
+    (profile as { full_name?: string | null } | null)?.full_name
+  );
+
+  const main = [
+    "Hi,",
+    "",
+    "If you're reading this, outbound email from SDR Jarvis is reaching your inbox.",
+    "",
+    "Next: import or discover leads, run the pipeline, and approve drafts before anything sends to prospects.",
+  ].join("\n");
+
   const result = await sendEmail({
     to: user.email,
     subject: "SDR Jarvis — test email",
-    body: [
-      "Hi,",
-      "",
-      "If you're reading this, outbound email from SDR Jarvis is reaching your inbox.",
-      "",
-      "Next: import or discover leads, run the pipeline, and approve drafts before anything sends to prospects.",
-      "",
-      "— Jarvis",
-    ].join("\n"),
+    body: appendSignaturePlain(main, sender),
   });
 
   if (!result.success) {

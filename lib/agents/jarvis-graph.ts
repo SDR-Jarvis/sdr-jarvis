@@ -83,6 +83,7 @@ async function approvalGateNode(
         to: lead.email,
         score: state.researchData?.score,
         lead_name: `${lead.firstName} ${lead.lastName}`,
+        campaign_id: state.campaignId,
       },
     });
 
@@ -148,6 +149,7 @@ export async function startCampaignRun(params: {
   recursionLimit?: number;
   dryRun?: boolean;
   complianceEmailSuffix?: string;
+  senderDisplayName?: string;
 }) {
   const threadId = params.threadId ?? crypto.randomUUID();
 
@@ -164,6 +166,7 @@ export async function startCampaignRun(params: {
     messages: [],
     dryRun: params.dryRun ?? false,
     complianceEmailSuffix: params.complianceEmailSuffix ?? "",
+    senderDisplayName: params.senderDisplayName ?? "",
   };
 
   const stream = await jarvisGraph.stream(initialState, {

@@ -116,6 +116,12 @@ export const JarvisState = Annotation.Root({
     reducer: (_, y) => y ?? "",
     default: () => "",
   }),
+
+  /** Display name for email sign-off (from profile.full_name, fallback in resolver). */
+  senderDisplayName: Annotation<string>({
+    reducer: (_, y) => y ?? "",
+    default: () => "",
+  }),
 });
 
 export type JarvisStateType = typeof JarvisState.State;

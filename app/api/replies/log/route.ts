@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { qualifyReply } from "@/lib/agents/nodes/qualifier";
 import { sendEmail } from "@/lib/agents/tools";
 import { logger } from "@/lib/logger";
+import { appendSignaturePlain, resolveSenderName } from "@/lib/email/signature";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -85,6 +86,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Run the Qualifier agent
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .single();
+  const replySenderName = resolveSenderName(
+    (prof as { full_name?: string | null } | null)?.full_name
+  );
+
   const qualification = await qualifyReply({
     interactionId: lastOutbound?.id ?? leadId,
     leadId,
@@ -118,10 +128,15 @@ export async function POST(req: NextRequest) {
     };
     const priorOutboundMessageId = lastOutboundMeta.rfcMessageId;
 
+    const replyBodySigned = appendSignaturePlain(
+      qualification.draftReply,
+      replySenderName
+    );
+
     const sendResult = await sendEmail({
       to: lead.email,
       subject: `Re: ${originalSubject}`,
-      body: qualification.draftReply,
+      body: replyBodySigned,
       inReplyTo: priorOutboundMessageId,
       references: priorOutboundMessageId,
     });
@@ -135,7 +150,7 @@ export async function POST(req: NextRequest) {
         type: "email_outbound",
         status: "sent",
         subject: `Re: ${originalSubject}`,
-        body: qualification.draftReply,
+        body: replyBodySigned,
         metadata: {
           messageId: sendResult.messageId,
           rfcMessageId: sendResult.rfcMessageId,

@@ -33,3 +33,16 @@ export function ensureComplianceInBody(
   }
   return `${body.trimEnd()}${buildComplianceEmailSuffix(opts)}`;
 }
+
+/** Split body into main + compliance when our standard `---` block is present. */
+export function splitMainAndComplianceBlock(body: string): {
+  main: string;
+  compliance: string | null;
+} {
+  const idx = body.indexOf("\n\n---\n");
+  if (idx === -1) return { main: body, compliance: null };
+  return {
+    main: body.slice(0, idx),
+    compliance: body.slice(idx),
+  };
+}

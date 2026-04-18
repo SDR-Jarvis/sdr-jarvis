@@ -4,6 +4,8 @@ import { startCampaignRun, cleanup } from "@/lib/agents/jarvis-graph";
 import { canProcessLeads, incrementLeadsUsed } from "@/lib/subscription";
 import type { LeadData } from "@/lib/agents/state";
 import { buildComplianceEmailSuffix } from "@/lib/compliance";
+import { resolveSenderName } from "@/lib/email/signature";
+import { sendSlackNotification } from "@/lib/slack";
 import {
   countLeadsScheduledToday,
   getDailyLeadProcessingCap,
@@ -94,9 +96,13 @@ export async function POST(req: NextRequest) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("email_opt_out_footer, postal_address")
+    .select("email_opt_out_footer, postal_address, full_name")
     .eq("id", user.id)
     .single();
+
+  const senderDisplayName = resolveSenderName(
+    (profile as { full_name?: string | null } | null)?.full_name
+  );
 
   const complianceEmailSuffix = buildComplianceEmailSuffix({
     optOutLine:
@@ -136,6 +142,7 @@ export async function POST(req: NextRequest) {
           recursionLimit,
           dryRun: dryRun === true,
           complianceEmailSuffix,
+          senderDisplayName,
         });
 
         for await (const event of graphStream) {
@@ -145,6 +152,59 @@ export async function POST(req: NextRequest) {
             data: event,
           });
           controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+        }
+
+        if (dryRun !== true) {
+          const { data: runRow } = await supabase
+            .from("agent_runs")
+            .select("id, started_at")
+            .eq("thread_id", threadId)
+            .single();
+
+          if (runRow?.started_at) {
+            const { data: dupSlack } = await supabase
+              .from("audit_log")
+              .select("id")
+              .eq("action", "slack_pipeline_approvals")
+              .eq("resource_id", runRow.id)
+              .limit(1)
+              .maybeSingle();
+
+            if (!dupSlack) {
+              const { data: queuedAudits } = await supabase
+                .from("audit_log")
+                .select("details")
+                .eq("user_id", user.id)
+                .eq("action", "approval_queued")
+                .gte("created_at", runRow.started_at);
+
+              const n = (queuedAudits ?? []).filter(
+                (a) =>
+                  (a.details as { campaign_id?: string } | null)?.campaign_id ===
+                  campaignId
+              ).length;
+
+              if (n > 0) {
+                const { data: camp } = await supabase
+                  .from("campaigns")
+                  .select("name")
+                  .eq("id", campaignId)
+                  .single();
+                const base =
+                  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+                void sendSlackNotification(
+                  `🟡 SDR Jarvis — ${n} email(s) ready for approval\nCampaign: ${camp?.name ?? "Campaign"}\n→ Review: ${base}/dashboard/approvals`
+                );
+                await supabase.from("audit_log").insert({
+                  user_id: user.id,
+                  action: "slack_pipeline_approvals",
+                  resource_type: "agent_run",
+                  resource_id: runRow.id,
+                  details: { campaign_id: campaignId, count: n },
+                });
+              }
+            }
+          }
         }
 
         await supabase

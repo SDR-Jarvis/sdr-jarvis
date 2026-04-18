@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/follow-ups",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/daily-lead-refresh",
+      "schedule": "0 12 * * *"
     }
   ]
 }

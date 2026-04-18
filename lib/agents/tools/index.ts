@@ -1,5 +1,15 @@
 import { Resend } from "resend";
 import { logger } from "@/lib/logger";
+import { stripSignatureMarkerForSend } from "@/lib/email/signature";
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 // ════════════════════════════════════════════════════
 // RATE LIMITER
@@ -443,11 +453,12 @@ export async function sendEmail(params: {
   if (params.references) headers["References"] = params.references;
 
   try {
+    const plain = stripSignatureMarkerForSend(params.body);
     const { data, error } = await getResend().emails.send({
       from,
       to: params.to,
       subject: params.subject,
-      html: params.body.replace(/\n/g, "<br>"),
+      html: escapeHtml(plain).replace(/\n/g, "<br>"),
       replyTo: params.replyTo || process.env.REPLY_TO_EMAIL,
       headers,
     });

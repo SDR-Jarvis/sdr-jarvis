@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/agents/tools";
 import { logger } from "@/lib/logger";
 import { buildThreadHeaders } from "@/lib/email/message-id";
 import { loadReplyThreadContext } from "@/lib/email/thread";
+import { appendSignaturePlain, resolveSenderName } from "@/lib/email/signature";
 
 export const runtime = "nodejs";
 
@@ -74,10 +75,20 @@ export async function POST(req: NextRequest) {
         inboundReferences: threadCtx?.inboundReferences,
       });
 
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
+      const sender = resolveSenderName(
+        (prof as { full_name?: string | null } | null)?.full_name
+      );
+      const bodyToSend = appendSignaturePlain(replyBody, sender);
+
       const result = await sendEmail({
         to: lead.email,
         subject: replySubject ?? "Re: Following up",
-        body: replyBody,
+        body: bodyToSend,
         inReplyTo: threadHeaders["In-Reply-To"],
         references: threadHeaders["References"],
       });
@@ -90,7 +101,7 @@ export async function POST(req: NextRequest) {
           type: "email_outbound",
           status: "sent",
           subject: replySubject,
-          body: replyBody,
+          body: bodyToSend,
           metadata: {
             messageId: result.messageId,
             rfcMessageId: result.rfcMessageId,
