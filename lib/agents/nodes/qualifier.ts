@@ -85,6 +85,23 @@ export async function qualifyReply(params: {
   leadName: string;
   leadTitle: string | null;
   leadCompany: string | null;
+  /**
+   * RFC 822 `Message-Id` of the inbound email, in canonical `<id@domain>`
+   * form. Persisted on the `email_reply` row so outbound replies can set
+   * `In-Reply-To` correctly without re-fetching from Resend.
+   */
+  inboundMessageId?: string | null;
+  /**
+   * The inbound email's `References` header, preserved verbatim for the
+   * RFC 5322 References-builder rule on outbound replies.
+   */
+  inboundReferences?: string | null;
+  /**
+   * Resend's internal `email_id` for the received message. Used only as a
+   * fallback by `loadReplyThreadContext` when the cached fields above are
+   * missing (legacy rows, or inbounds that arrived with a null message_id).
+   */
+  resendEmailId?: string | null;
 }): Promise<QualificationResult | null> {
   logger.setUser(params.userId);
   logger.step("qualifier", `Analyzing reply for ${params.leadName}`);
@@ -118,6 +135,14 @@ export async function qualifyReply(params: {
 
     const supabase = createServiceClient();
 
+    const replyMetadata: Record<string, unknown> = {
+      qualification: result,
+      original_interaction_id: params.interactionId,
+    };
+    if (params.inboundMessageId) replyMetadata.inboundMessageId = params.inboundMessageId;
+    if (params.inboundReferences) replyMetadata.inboundReferences = params.inboundReferences;
+    if (params.resendEmailId) replyMetadata.resendEmailId = params.resendEmailId;
+
     const replyInteraction = await supabase
       .from("interactions")
       .insert({
@@ -128,10 +153,7 @@ export async function qualifyReply(params: {
         status: "replied",
         subject: `Re: ${params.originalSubject}`,
         body: params.replyContent,
-        metadata: {
-          qualification: result,
-          original_interaction_id: params.interactionId,
-        },
+        metadata: replyMetadata,
         replied_at: new Date().toISOString(),
       })
       .select("id")

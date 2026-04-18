@@ -289,6 +289,17 @@ async function handleInbound(event: ResendReceivedEvent): Promise<NextResponse> 
       .update({ status: "replied" })
       .eq("id", interaction.lead_id);
 
+    // Prefer the explicit `message_id` field; fall back to the headers map
+    // so we still thread when Resend's top-level field is null. The headers
+    // map is lowercase-keyed in practice but we check both casings defensively.
+    const inboundMessageId =
+      email.message_id ??
+      email.headers?.["message-id"] ??
+      email.headers?.["Message-ID"] ??
+      null;
+    const inboundReferences =
+      email.headers?.["references"] ?? email.headers?.["References"] ?? null;
+
     await qualifyReply({
       interactionId: interaction.id,
       leadId: interaction.lead_id,
@@ -300,6 +311,9 @@ async function handleInbound(event: ResendReceivedEvent): Promise<NextResponse> 
       leadName: `${lead.first_name} ${lead.last_name}`,
       leadTitle: lead.title,
       leadCompany: lead.company,
+      inboundMessageId,
+      inboundReferences,
+      resendEmailId: receivedEmailId,
     });
   }
 
