@@ -21,7 +21,7 @@ function utcDayString(): string {
  * GET /api/cron/daily-lead-refresh
  * Moves leads from pool campaigns (is_lead_pool) into active campaigns, within caps.
  */
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
