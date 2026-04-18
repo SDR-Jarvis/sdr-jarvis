@@ -7,6 +7,7 @@ import {
   fetchReceivedEmail,
   ResendReceivingError,
 } from "@/lib/email/resend-receiving";
+import { extractCandidateIds } from "@/lib/email/message-id";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -311,37 +312,27 @@ async function handleInbound(event: ResendReceivedEvent): Promise<NextResponse> 
 /**
  * Resolve an inbound email back to the outbound interaction it's replying to.
  *
+ * Thin IO wrapper: candidate Message-Id extraction is delegated to the pure
+ * `extractCandidateIds` helper in `lib/email/message-id.ts` (covered by unit
+ * tests), and this function only handles the Supabase lookup.
+ *
  * Strategy, in order of reliability:
- *   1. RFC 822 `In-Reply-To` header — points at the Message-ID of the
- *      outbound send, which Resend returns as `message_id` on the send
- *      response and which we store on `interactions.metadata.rfcMessageId`.
- *   2. `References` header — same lookup, useful when a thread has been
+ *   1. RFC 822 `In-Reply-To` header — points at the Message-Id of the
+ *      outbound send, which we generated ourselves in `sendEmail` and stored
+ *      on `interactions.metadata.rfcMessageId`.
+ *   2. `References` header tokens — same lookup, useful when a thread was
  *      forwarded through a list server that rewrote `In-Reply-To`.
  *
- * We intentionally do NOT fall back to a "same sender + subject startsWith
- * 'Re:'" match — it's too easy to cross-thread between different leads.
+ * We intentionally do NOT fall back to "same sender + subject startsWith
+ * 'Re:'" — it's too easy to cross-thread between different leads.
  */
 async function matchOutboundInteraction(
   supabase: ReturnType<typeof createServiceClient>,
   email: Pick<Awaited<ReturnType<typeof fetchReceivedEmail>>, "headers">
 ) {
-  const normalized: Record<string, string> = {};
-  for (const [k, v] of Object.entries(email.headers ?? {})) {
-    normalized[k.toLowerCase()] = v;
-  }
+  const candidates = extractCandidateIds(email.headers);
 
-  const candidateIds = new Set<string>();
-  const inReplyTo = normalized["in-reply-to"];
-  if (inReplyTo) candidateIds.add(inReplyTo.trim());
-
-  const references = normalized["references"];
-  if (references) {
-    for (const token of references.split(/\s+/)) {
-      if (token) candidateIds.add(token.trim());
-    }
-  }
-
-  for (const rfcMessageId of candidateIds) {
+  for (const rfcMessageId of candidates) {
     const { data } = await supabase
       .from("interactions")
       .select("id, lead_id, campaign_id, user_id, subject, body")
