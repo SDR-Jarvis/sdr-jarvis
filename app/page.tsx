@@ -17,11 +17,17 @@ import {
   ArrowRight,
   Search,
   CheckCircle,
+  Circle,
   Users,
   MessageSquare,
   TrendingUp,
   ChevronRight,
 } from "lucide-react";
+import {
+  evaluatePassword,
+  friendlyAuthPasswordError,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/auth/password-policy";
 
 type AuthStep = "email" | "password";
 
@@ -61,6 +67,8 @@ export default function LandingPage() {
     setError("");
     setSuccess("");
 
+    // Do not enforce the strong checklist here — returning users may have older
+    // passwords. Supabase still validates on sign-in / sign-up.
     if (password.length < 6) {
       setError("Password must be at least 6 characters.");
       setLoading(false);
@@ -86,7 +94,14 @@ export default function LandingPage() {
       setLoading(false);
 
       if (signUpError) {
-        setError(signUpError.message);
+        const raw = signUpError.message;
+        if (/already|registered|exists|identity/i.test(raw)) {
+          setError(
+            "That email already has an account. If it's yours, try a different password — or use Change to switch email."
+          );
+          return;
+        }
+        setError(friendlyAuthPasswordError(raw));
         return;
       }
 
@@ -105,7 +120,7 @@ export default function LandingPage() {
     }
 
     setLoading(false);
-    setError(signInError.message);
+    setError(friendlyAuthPasswordError(signInError.message));
   }
 
   return (
@@ -388,7 +403,7 @@ export default function LandingPage() {
             <p className="mt-1 text-sm text-jarvis-muted">
               {step === "email"
                 ? "Enter your email to get started — or sign in to your existing account."
-                : "Set a password to secure your account."}
+                : "Choose a strong password — same rules apply for new accounts and password resets."}
             </p>
           </div>
 
@@ -441,9 +456,10 @@ export default function LandingPage() {
                     type={showPassword ? "text" : "password"}
                     required
                     minLength={6}
+                    autoComplete={step === "password" ? "current-password" : "off"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 6 characters"
+                    placeholder="Your password"
                     className="jarvis-input pr-10"
                     autoFocus
                   />
@@ -455,12 +471,20 @@ export default function LandingPage() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="mt-1 text-[11px] text-jarvis-muted/60">
-                  New here? Pick a password. Returning? Enter your existing one.
+                <p className="mt-1.5 text-xs leading-relaxed text-jarvis-muted">
+                  <span className="text-jarvis-muted/90">Returning?</span> Enter your existing password (even if it doesn&apos;t match every check below).
+                  {" "}
+                  <span className="text-jarvis-muted/90">New account?</span> Meet every requirement — Supabase will reject sign-up otherwise.
                 </p>
               </div>
 
-              {error && <p className="text-sm text-jarvis-danger">{error}</p>}
+              <PasswordRequirements password={password} />
+
+              {error && (
+                <div className="rounded-lg border border-jarvis-danger/25 bg-jarvis-danger/5 px-3 py-2.5 text-sm text-jarvis-danger">
+                  {error}
+                </div>
+              )}
               {success && <p className="text-sm text-jarvis-success">{success}</p>}
 
               <button
@@ -520,6 +544,70 @@ export default function LandingPage() {
 }
 
 /* ═══════════ SUBCOMPONENTS ═══════════ */
+
+function PasswordRequirements({ password }: { password: string }) {
+  const c = evaluatePassword(password);
+  const rows: { id: string; ok: boolean; label: string }[] = [
+    {
+      id: "len",
+      ok: c.minLength,
+      label: `At least ${PASSWORD_MIN_LENGTH} characters`,
+    },
+    { id: "lower", ok: c.lowercase, label: "One lowercase letter (a–z)" },
+    { id: "upper", ok: c.uppercase, label: "One uppercase letter (A–Z)" },
+    { id: "num", ok: c.digit, label: "One number (0–9)" },
+    {
+      id: "sym",
+      ok: c.symbol,
+      label: "One symbol (! @ # $ % …)",
+    },
+  ];
+
+  return (
+    <div
+      className="rounded-lg border border-white/[0.08] bg-jarvis-surface/40 px-3.5 py-3"
+      role="region"
+      aria-label="Password requirements"
+    >
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-jarvis-muted">
+        New accounts — use all of the following
+      </p>
+      <ul className="space-y-1.5">
+        {rows.map((row) => (
+          <li key={row.id} className="flex items-start gap-2.5 text-xs leading-snug">
+            {row.ok ? (
+              <CheckCircle
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-jarvis-success"
+                aria-hidden
+              />
+            ) : (
+              <Circle
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-jarvis-muted/35"
+                aria-hidden
+              />
+            )}
+            <span
+              className={
+                row.ok ? "text-jarvis-muted/70" : "text-jarvis-muted"
+              }
+            >
+              {row.label}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2.5 border-t border-white/[0.06] pt-2 text-[11px] leading-relaxed text-jarvis-muted/55">
+        These mirror the default Supabase &quot;strong password&quot; rules. If you still see an error after
+        meeting them, check{" "}
+        <span className="text-jarvis-muted/80">
+          Supabase Dashboard → Authentication → Providers → Email → Password
+        </span>
+        {" "}
+        (minimum length, character types, or leaked-password protection).
+      </p>
+    </div>
+  );
+}
 
 function PainPoint({ text }: { text: string }) {
   return (
