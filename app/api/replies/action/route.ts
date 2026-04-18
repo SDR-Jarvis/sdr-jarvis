@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/agents/tools";
 import { logger } from "@/lib/logger";
+import { buildThreadHeaders } from "@/lib/email/message-id";
+import { loadReplyThreadContext } from "@/lib/email/thread";
 
 export const runtime = "nodejs";
 
@@ -56,10 +58,28 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "No email address for this lead" }, { status: 400 });
       }
 
+      // Resolve threading context for the inbound we're replying to. Sources,
+      // in order: cached fields on the email_reply row; Resend Received
+      // Emails API via the stored email_id. `null` means we can't thread
+      // this reply — we still send, but without In-Reply-To / References.
+      const threadCtx = await loadReplyThreadContext(serviceClient, replyId);
+      if (!threadCtx) {
+        logger.warn(
+          "replies",
+          `No threading context for reply ${replyId} — sending without In-Reply-To/References`
+        );
+      }
+      const threadHeaders = buildThreadHeaders({
+        inboundMessageId: threadCtx?.inboundMessageId,
+        inboundReferences: threadCtx?.inboundReferences,
+      });
+
       const result = await sendEmail({
         to: lead.email,
         subject: replySubject ?? "Re: Following up",
         body: replyBody,
+        inReplyTo: threadHeaders["In-Reply-To"],
+        references: threadHeaders["References"],
       });
 
       if (result.success) {
@@ -71,7 +91,13 @@ export async function POST(req: NextRequest) {
           status: "sent",
           subject: replySubject,
           body: replyBody,
-          metadata: { messageId: result.messageId, is_reply_to: replyId },
+          metadata: {
+            messageId: result.messageId,
+            rfcMessageId: result.rfcMessageId,
+            is_reply_to: replyId,
+            inReplyTo: threadHeaders["In-Reply-To"],
+            references: threadHeaders["References"],
+          },
           sent_at: new Date().toISOString(),
         });
 

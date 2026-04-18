@@ -50,10 +50,12 @@ export async function POST(req: NextRequest) {
 
   const serviceClient = createServiceClient();
 
-  // Find the most recent outbound interaction for this lead
+  // Find the most recent outbound interaction for this lead. `metadata` is
+  // pulled too because we need the outbound's `rfcMessageId` to set
+  // threading headers on any auto-reply.
   const { data: lastOutbound } = await serviceClient
     .from("interactions")
-    .select("id, subject, body, campaign_id")
+    .select("id, subject, body, campaign_id, metadata")
     .eq("lead_id", leadId)
     .eq("type", "email_outbound")
     .in("status", ["sent", "delivered"])
@@ -107,10 +109,21 @@ export async function POST(req: NextRequest) {
   ) {
     logger.step("replies", `Auto-sending Jarvis reply to ${lead.email}`);
 
+    // This route is called with a manually-pasted reply, so we don't have
+    // the prospect's inbound Message-Id. Best-effort threading: point
+    // In-Reply-To at the last outbound of ours the prospect was replying
+    // to. The prospect's client then threads off the same id.
+    const lastOutboundMeta = (lastOutbound?.metadata ?? {}) as {
+      rfcMessageId?: string;
+    };
+    const priorOutboundMessageId = lastOutboundMeta.rfcMessageId;
+
     const sendResult = await sendEmail({
       to: lead.email,
       subject: `Re: ${originalSubject}`,
       body: qualification.draftReply,
+      inReplyTo: priorOutboundMessageId,
+      references: priorOutboundMessageId,
     });
 
     if (sendResult.success) {
@@ -123,7 +136,13 @@ export async function POST(req: NextRequest) {
         status: "sent",
         subject: `Re: ${originalSubject}`,
         body: qualification.draftReply,
-        metadata: { messageId: sendResult.messageId, auto_reply: true },
+        metadata: {
+          messageId: sendResult.messageId,
+          rfcMessageId: sendResult.rfcMessageId,
+          auto_reply: true,
+          inReplyTo: priorOutboundMessageId,
+          references: priorOutboundMessageId,
+        },
         sent_at: new Date().toISOString(),
       });
 
