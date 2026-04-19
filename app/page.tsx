@@ -157,6 +157,7 @@ export default function LandingPage() {
     }
     setResetSending(true);
     setError("");
+    setSuccess("");
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: `${origin}/auth/callback?next=/dashboard`,
@@ -495,6 +496,27 @@ export default function LandingPage() {
                 Get Started Free
                 <ArrowRight className="h-4 w-4" />
               </button>
+              <div className="flex flex-col items-center gap-2 text-center">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={resetSending}
+                  className="text-xs font-medium text-jarvis-blue hover:underline disabled:opacity-50"
+                >
+                  {resetSending ? "Sending reset link…" : "Forgot password? Email me a reset link"}
+                </button>
+                <p className="text-[11px] text-jarvis-muted/70">
+                  Enter your email above first. After the link, you will return to the app signed in.
+                </p>
+              </div>
+              {error && (
+                <div className="rounded-lg border border-jarvis-danger/25 bg-jarvis-danger/5 px-3 py-2.5 text-sm text-jarvis-danger">
+                  {error}
+                </div>
+              )}
+              {success && (
+                <p className="text-sm text-jarvis-success">{success}</p>
+              )}
             </form>
           ) : (
             <form onSubmit={handlePasswordSubmit} className="space-y-4">
