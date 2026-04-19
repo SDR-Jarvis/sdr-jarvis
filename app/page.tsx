@@ -30,13 +30,18 @@ import {
 } from "@/lib/auth/password-policy";
 
 type AuthStep = "email" | "password";
+/** `signin` = existing user only. `signup` = new account only (no auto sign-up after failed login). */
+type AccountMode = "signin" | "signup";
 
 export default function LandingPage() {
   const [step, setStep] = useState<AuthStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [accountMode, setAccountMode] = useState<AccountMode>("signin");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resetSending, setResetSending] = useState(false);
+  const [resendSending, setResendSending] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [visibleStats, setVisibleStats] = useState(false);
@@ -67,60 +72,117 @@ export default function LandingPage() {
     setError("");
     setSuccess("");
 
-    // Do not enforce the strong checklist here — returning users may have older
-    // passwords. Supabase still validates on sign-in / sign-up.
     if (password.length < 6) {
       setError("Password must be at least 6 characters.");
       setLoading(false);
       return;
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (!signInError) {
-      router.push("/dashboard");
-      return;
-    }
-
-    if (signInError.message.includes("Invalid login")) {
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    if (accountMode === "signin") {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       setLoading(false);
 
-      if (signUpError) {
-        const raw = signUpError.message;
-        if (/already|registered|exists|identity/i.test(raw)) {
-          setError(
-            "That email already has an account. If it's yours, try a different password — or use Change to switch email."
-          );
-          return;
-        }
-        setError(friendlyAuthPasswordError(raw));
-        return;
-      }
-
-      if (signUpData.user && signUpData.session) {
+      if (!signInError) {
         router.push("/dashboard");
         return;
       }
 
-      if (signUpData.user && !signUpData.session) {
-        setSuccess("Account created! Check your email to confirm, then sign in.");
+      const msg = signInError.message.toLowerCase();
+      if (msg.includes("email not confirmed") || msg.includes("confirm your email")) {
+        setError(
+          "Confirm your email before signing in. Use the link in your inbox, or resend below."
+        );
         return;
       }
 
-      setError("Wrong password. Try again or use a different email to create a new account.");
+      if (
+        signInError.status === 400 ||
+        msg.includes("invalid login") ||
+        msg.includes("invalid email or password") ||
+        msg.includes("invalid credentials") ||
+        msg.includes("wrong password")
+      ) {
+        setError(
+          "That email or password does not match. Try again, reset your password below, or switch to “Create an account” if you are new here."
+        );
+        return;
+      }
+
+      setError(friendlyAuthPasswordError(signInError.message));
       return;
     }
 
+    // signup
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
     setLoading(false);
-    setError(friendlyAuthPasswordError(signInError.message));
+
+    if (signUpError) {
+      const raw = signUpError.message;
+      if (/already|registered|exists|identity/i.test(raw)) {
+        setError(
+          "That email already has an account. Use “Sign in instead” above with your password, or reset it below."
+        );
+        setAccountMode("signin");
+        return;
+      }
+      setError(friendlyAuthPasswordError(raw));
+      return;
+    }
+
+    if (signUpData.user && signUpData.session) {
+      router.push("/dashboard");
+      return;
+    }
+
+    if (signUpData.user && !signUpData.session) {
+      setSuccess("Account created! Check your email to confirm, then sign in with “Sign in instead”.");
+      return;
+    }
+
+    setError("Could not complete sign-up. Try again.");
+  }
+
+  async function handleForgotPassword() {
+    if (!email.trim()) {
+      setError("Enter your email above, then click Forgot password again.");
+      return;
+    }
+    setResetSending(true);
+    setError("");
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${origin}/auth/callback?next=/dashboard`,
+    });
+    setResetSending(false);
+    if (resetErr) {
+      setError(resetErr.message);
+      return;
+    }
+    setSuccess("Check your email for a password reset link.");
+  }
+
+  async function handleResendConfirmation() {
+    if (!email.trim()) return;
+    setResendSending(true);
+    setError("");
+    const { error: resendErr } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+    });
+    setResendSending(false);
+    if (resendErr) {
+      setError(resendErr.message);
+      return;
+    }
+    setSuccess("Confirmation email sent. Check your inbox.");
   }
 
   return (
@@ -403,7 +465,9 @@ export default function LandingPage() {
             <p className="mt-1 text-sm text-jarvis-muted">
               {step === "email"
                 ? "Enter your email to get started — or sign in to your existing account."
-                : "Choose a strong password — same rules apply for new accounts and password resets."}
+                : accountMode === "signin"
+                  ? "Sign in with the password you already use for this email."
+                  : "Create a password for a new account (use the checklist below)."}
             </p>
           </div>
 
@@ -439,11 +503,53 @@ export default function LandingPage() {
                 <span className="truncate">{email}</span>
                 <button
                   type="button"
-                  onClick={() => { setStep("email"); setPassword(""); setError(""); setSuccess(""); }}
+                  onClick={() => {
+                  setStep("email");
+                  setPassword("");
+                  setAccountMode("signin");
+                  setError("");
+                  setSuccess("");
+                }}
                   className="ml-auto shrink-0 text-jarvis-muted hover:text-white transition-colors"
                 >
                   Change
                 </button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-medium text-jarvis-muted">I want to</span>
+                <div className="flex rounded-lg border border-jarvis-border/60 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountMode("signin");
+                      setError("");
+                      setSuccess("");
+                    }}
+                    className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                      accountMode === "signin"
+                        ? "bg-jarvis-blue text-jarvis-dark"
+                        : "text-jarvis-muted hover:text-white"
+                    }`}
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountMode("signup");
+                      setError("");
+                      setSuccess("");
+                    }}
+                    className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                      accountMode === "signup"
+                        ? "bg-jarvis-blue text-jarvis-dark"
+                        : "text-jarvis-muted hover:text-white"
+                    }`}
+                  >
+                    Create account
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -456,7 +562,9 @@ export default function LandingPage() {
                     type={showPassword ? "text" : "password"}
                     required
                     minLength={6}
-                    autoComplete={step === "password" ? "current-password" : "off"}
+                    autoComplete={
+                      accountMode === "signup" ? "new-password" : "current-password"
+                    }
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Your password"
@@ -472,13 +580,25 @@ export default function LandingPage() {
                   </button>
                 </div>
                 <p className="mt-1.5 text-xs leading-relaxed text-jarvis-muted">
-                  <span className="text-jarvis-muted/90">Returning?</span> Enter your existing password (even if it doesn&apos;t match every check below).
-                  {" "}
-                  <span className="text-jarvis-muted/90">New account?</span> Meet every requirement — Supabase will reject sign-up otherwise.
+                  {accountMode === "signin" ? (
+                    <>
+                      Use the password for this email.{" "}
+                      <button
+                        type="button"
+                        onClick={handleForgotPassword}
+                        disabled={resetSending || loading}
+                        className="text-jarvis-blue hover:underline disabled:opacity-50"
+                      >
+                        {resetSending ? "Sending link…" : "Forgot password?"}
+                      </button>
+                    </>
+                  ) : (
+                    <>Meet every checklist row — required for new accounts.</>
+                  )}
                 </p>
               </div>
 
-              <PasswordRequirements password={password} />
+              {accountMode === "signup" && <PasswordRequirements password={password} />}
 
               {error && (
                 <div className="rounded-lg border border-jarvis-danger/25 bg-jarvis-danger/5 px-3 py-2.5 text-sm text-jarvis-danger">
@@ -487,13 +607,32 @@ export default function LandingPage() {
               )}
               {success && <p className="text-sm text-jarvis-success">{success}</p>}
 
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-jarvis-muted">
+                <button
+                  type="button"
+                  onClick={handleResendConfirmation}
+                  disabled={resendSending || loading || !email.trim()}
+                  className="text-jarvis-blue hover:underline disabled:opacity-50"
+                >
+                  {resendSending ? "Sending…" : "Resend confirmation email"}
+                </button>
+                <span className="text-jarvis-border">·</span>
+                <span>Didn&apos;t get a reset? Check spam.</span>
+              </div>
+
               <button
                 type="submit"
                 disabled={loading}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-jarvis-blue px-4 py-3 text-sm font-bold text-jarvis-dark transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-                {loading ? "Setting up your account…" : "Launch Jarvis"}
+                {loading
+                  ? accountMode === "signin"
+                    ? "Signing in…"
+                    : "Creating account…"
+                  : accountMode === "signin"
+                    ? "Sign in"
+                    : "Create account & continue"}
               </button>
             </form>
           )}
