@@ -30,12 +30,13 @@ interface ChecklistItem {
 
 interface ChecklistData {
   hasTestEmail: boolean;
+  /** Domain setup optional when using shared sender */
+  hasDomain: boolean;
   hasProfile: boolean;
   hasIcp: boolean;
   hasCampaign: boolean;
   hasLeads: boolean;
   hasRun: boolean;
-  hasDomain: boolean;
   hasCompliance: boolean;
   hasReviewedDraft: boolean;
 }
@@ -51,16 +52,16 @@ const CHECKLIST: ChecklistItem[] = [
   },
   {
     id: "domain",
-    label: "Set up a sending domain",
-    description: "SPF/DKIM/DMARC on a dedicated domain — see Settings → Email Domain.",
+    label: "Set up a sending domain (recommended)",
+    description: "Optional if you send from the shared address — see Settings → Sending address.",
     href: "/dashboard/settings?tab=domain",
     icon: Globe,
     check: (d) => d.hasDomain,
   },
   {
     id: "compliance",
-    label: "Compliance footer & warmup cap",
-    description: "Opt-out line, postal address, daily send guardrail (Settings → Compliance).",
+    label: "Legal footer & warmup cap",
+    description: "Opt-out line, postal address, daily send guardrail (Settings → Legal footer).",
     href: "/dashboard/settings?tab=compliance",
     icon: Sparkles,
     check: (d) => d.hasCompliance,
@@ -132,7 +133,7 @@ export function OnboardingChecklist() {
         await Promise.all([
         supabase
           .from("profiles")
-          .select("full_name, company_name, icp_description, postal_address")
+          .select("full_name, company_name, icp_description, postal_address, sending_mode")
           .eq("id", user.id)
           .single(),
         supabase
@@ -167,7 +168,11 @@ export function OnboardingChecklist() {
       const profile = profileRes.data;
       const dismissed = localStorage.getItem("jarvis_domain_done") === "1";
       setDomainDismissed(dismissed);
-      const hasDomain = dismissed || (sentRes.count ?? 0) > 0;
+      const sendingShared =
+        (profile as { sending_mode?: string | null } | null)?.sending_mode !==
+        "custom";
+      const hasDomain =
+        dismissed || (sentRes.count ?? 0) > 0 || sendingShared;
       const postalOk =
         typeof profile?.postal_address === "string" &&
         profile.postal_address.trim().length >= 8;

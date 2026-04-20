@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { startCampaignRun, cleanup } from "@/lib/agents/jarvis-graph";
 import { canProcessLeads, incrementLeadsUsed } from "@/lib/subscription";
 import type { LeadData } from "@/lib/agents/state";
 import { buildComplianceEmailSuffix } from "@/lib/compliance";
 import { resolveSenderName } from "@/lib/email/signature";
 import { sendSlackNotification } from "@/lib/slack";
+import { logger } from "@/lib/logger";
 import {
   countLeadsScheduledToday,
   getDailyLeadProcessingCap,
@@ -162,7 +163,8 @@ export async function POST(req: NextRequest) {
             .single();
 
           if (runRow?.started_at) {
-            const { data: dupSlack } = await supabase
+            const service = createServiceClient();
+            const { data: dupSlack } = await service
               .from("audit_log")
               .select("id")
               .eq("action", "slack_pipeline_approvals")
@@ -171,18 +173,20 @@ export async function POST(req: NextRequest) {
               .maybeSingle();
 
             if (!dupSlack) {
-              const { data: queuedAudits } = await supabase
-                .from("audit_log")
-                .select("details")
+              // Source of truth: approvals row (audit "approval_queued" can be missed or filtered badly)
+              const { count: pendingCount, error: pendingErr } = await supabase
+                .from("approvals")
+                .select("*", { count: "exact", head: true })
                 .eq("user_id", user.id)
-                .eq("action", "approval_queued")
+                .eq("campaign_id", campaignId)
+                .eq("status", "pending")
                 .gte("created_at", runRow.started_at);
 
-              const n = (queuedAudits ?? []).filter(
-                (a) =>
-                  (a.details as { campaign_id?: string } | null)?.campaign_id ===
-                  campaignId
-              ).length;
+              if (pendingErr) {
+                logger.error("slack", `Pending approvals count failed: ${pendingErr.message}`);
+              }
+
+              const n = pendingCount ?? 0;
 
               if (n > 0) {
                 const { data: camp } = await supabase
@@ -195,7 +199,7 @@ export async function POST(req: NextRequest) {
                 void sendSlackNotification(
                   `🟡 SDR Jarvis — ${n} email(s) ready for approval\nCampaign: ${camp?.name ?? "Campaign"}\n→ Review: ${base}/dashboard/approvals`
                 );
-                await supabase.from("audit_log").insert({
+                await service.from("audit_log").insert({
                   user_id: user.id,
                   action: "slack_pipeline_approvals",
                   resource_type: "agent_run",

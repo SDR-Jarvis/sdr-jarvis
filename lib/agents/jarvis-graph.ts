@@ -45,6 +45,8 @@ async function approvalGateNode(
         status: "pending_approval",
         subject: draft.subject,
         body: draft.body,
+        ai_draft_subject: draft.subject,
+        ai_draft_body: draft.body,
         metadata: { channel: draft.channel, personalization: draft.personalizationNotes },
       })
       .select("id")

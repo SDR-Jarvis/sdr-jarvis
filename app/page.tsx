@@ -25,9 +25,10 @@ import {
 } from "lucide-react";
 import {
   evaluatePassword,
-  friendlyAuthPasswordError,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password-policy";
+import { getFriendlyAuthError } from "@/lib/auth/error-messages";
+import { signInWithOAuth, type OAuthProvider } from "@/lib/auth/oauth";
 
 type AuthStep = "email" | "password";
 /** `signin` = existing user only. `signup` = new account only (no auto sign-up after failed login). */
@@ -45,10 +46,29 @@ export default function LandingPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [visibleStats, setVisibleStats] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
   const statsRef = useRef<HTMLDivElement>(null);
 
   const supabase = createClient();
   const router = useRouter();
+
+  const googleOAuthEnabled =
+    process.env.NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED === "true";
+  const githubOAuthEnabled =
+    process.env.NEXT_PUBLIC_GITHUB_OAUTH_ENABLED === "true";
+  const linkedinOAuthEnabled =
+    process.env.NEXT_PUBLIC_LINKEDIN_OAUTH_ENABLED === "true";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const p = new URLSearchParams(window.location.search);
+    const err = p.get("error");
+    if (err === "auth_failed" || err === "oauth_failed") {
+      setError("Something went wrong signing you in. Please try again.");
+      const path = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, "", path);
+    }
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -72,8 +92,8 @@ export default function LandingPage() {
     setError("");
     setSuccess("");
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      setError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
       setLoading(false);
       return;
     }
@@ -112,7 +132,7 @@ export default function LandingPage() {
         return;
       }
 
-      setError(friendlyAuthPasswordError(signInError.message));
+      setError(getFriendlyAuthError(signInError.message));
       return;
     }
 
@@ -133,7 +153,7 @@ export default function LandingPage() {
         setAccountMode("signin");
         return;
       }
-      setError(friendlyAuthPasswordError(raw));
+      setError(getFriendlyAuthError(raw));
       return;
     }
 
@@ -164,10 +184,24 @@ export default function LandingPage() {
     });
     setResetSending(false);
     if (resetErr) {
-      setError(resetErr.message);
+      setError(getFriendlyAuthError(resetErr.message));
       return;
     }
     setSuccess("Check your email for a password reset link.");
+  }
+
+  async function handleOAuth(provider: OAuthProvider) {
+    setError("");
+    setSuccess("");
+    setOauthLoading(provider);
+    try {
+      await signInWithOAuth(provider);
+    } catch (e) {
+      setError(
+        e instanceof Error ? getFriendlyAuthError(e.message) : "Something went wrong."
+      );
+      setOauthLoading(null);
+    }
   }
 
   async function handleResendConfirmation() {
@@ -180,14 +214,14 @@ export default function LandingPage() {
     });
     setResendSending(false);
     if (resendErr) {
-      setError(resendErr.message);
+      setError(getFriendlyAuthError(resendErr.message));
       return;
     }
     setSuccess("Confirmation email sent. Check your inbox.");
   }
 
   return (
-    <div className="min-h-screen bg-jarvis-dark">
+    <div className="min-h-dvh bg-jarvis-dark pb-[env(safe-area-inset-bottom)]">
       {/* Background */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute left-1/2 top-0 h-[1000px] w-[1000px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-jarvis-blue/[0.03] blur-[200px]" />
@@ -472,6 +506,62 @@ export default function LandingPage() {
             </p>
           </div>
 
+          {(googleOAuthEnabled || githubOAuthEnabled || linkedinOAuthEnabled) && (
+            <div className="space-y-2">
+              {googleOAuthEnabled && (
+                <button
+                  type="button"
+                  onClick={() => void handleOAuth("google")}
+                  disabled={!!oauthLoading}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-jarvis-border bg-transparent px-4 text-sm font-medium text-white transition-colors hover:bg-white/5 disabled:opacity-50"
+                >
+                  {oauthLoading === "google" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <GoogleIcon />
+                  )}
+                  Continue with Google
+                </button>
+              )}
+              {githubOAuthEnabled && (
+                <button
+                  type="button"
+                  onClick={() => void handleOAuth("github")}
+                  disabled={!!oauthLoading}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-jarvis-border bg-transparent px-4 text-sm font-medium text-white transition-colors hover:bg-white/5 disabled:opacity-50"
+                >
+                  {oauthLoading === "github" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <GithubIcon />
+                  )}
+                  Continue with GitHub
+                </button>
+              )}
+              {linkedinOAuthEnabled && (
+                <button
+                  type="button"
+                  onClick={() => void handleOAuth("linkedin_oidc")}
+                  disabled={!!oauthLoading}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-jarvis-border bg-transparent px-4 text-sm font-medium text-white transition-colors hover:bg-white/5 disabled:opacity-50"
+                >
+                  {oauthLoading === "linkedin_oidc" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <LinkedinIcon />
+                  )}
+                  Continue with LinkedIn
+                </button>
+              )}
+              <div className="relative py-2 text-center">
+                <span className="relative z-10 bg-jarvis-surface px-3 text-xs text-jarvis-muted">
+                  or
+                </span>
+                <div className="absolute left-0 right-0 top-1/2 z-0 h-px bg-jarvis-border" />
+              </div>
+            </div>
+          )}
+
           {step === "email" ? (
             <form onSubmit={handleEmailContinue} className="space-y-4">
               <div>
@@ -583,7 +673,7 @@ export default function LandingPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     required
-                    minLength={6}
+                    minLength={PASSWORD_MIN_LENGTH}
                     autoComplete={
                       accountMode === "signup" ? "new-password" : "current-password"
                     }
@@ -758,15 +848,49 @@ function PasswordRequirements({ password }: { password: string }) {
         ))}
       </ul>
       <p className="mt-2.5 border-t border-white/[0.06] pt-2 text-[11px] leading-relaxed text-jarvis-muted/55">
-        These mirror the default Supabase &quot;strong password&quot; rules. If you still see an error after
-        meeting them, check{" "}
-        <span className="text-jarvis-muted/80">
-          Supabase Dashboard → Authentication → Providers → Email → Password
-        </span>
-        {" "}
-        (minimum length, character types, or leaked-password protection).
+        If you still see an error after meeting every line above, try a longer phrase or a different mix of
+        characters. Still stuck? Contact support — we can help.
       </p>
     </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+      <path
+        fill="#4285F4"
+        d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908C16.658 14.03 17.64 11.72 17.64 9.2z"
+      />
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.59.102-1.166.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.826.957 4.038l3.007-2.332z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.962L3.964 6.294C4.672 4.167 6.656 3.58 9 3.58z"
+      />
+    </svg>
+  );
+}
+
+function GithubIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.929.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
+    </svg>
+  );
+}
+
+function LinkedinIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="#0A66C2" aria-hidden>
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+    </svg>
   );
 }
 

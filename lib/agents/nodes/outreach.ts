@@ -2,6 +2,7 @@ import { AIMessage } from "@langchain/core/messages";
 import { createLLMClient } from "@/lib/llm";
 import { logger } from "@/lib/logger";
 import { appendSignaturePlain } from "@/lib/email/signature";
+import { createServiceClient } from "@/lib/supabase/server";
 import type { JarvisStateType, DraftMessage } from "../state";
 
 const INITIAL_OUTREACH_PROMPT = `You write cold emails for B2B sales. You are exceptionally good at it because you follow these rules without exception:
@@ -111,10 +112,35 @@ export async function outreachNode(
     systemPrompt = INITIAL_OUTREACH_PROMPT;
   }
 
+  let styleBlock = "";
+  try {
+    const supabase = createServiceClient();
+    const { data: examples } = await supabase
+      .from("interactions")
+      .select("human_approved_body")
+      .eq("user_id", state.userId)
+      .eq("was_edited", false)
+      .eq("status", "sent")
+      .not("human_approved_body", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (examples?.length) {
+      const blocks = examples.map(
+        (e, i) =>
+          `Example ${i + 1}:\n${String(e.human_approved_body ?? "").slice(0, 600)}`
+      );
+      styleBlock = `\n\nFOUNDER-APPROVED STYLE (match tone and brevity — these were sent without edits):\n${blocks.join("\n\n---\n")}`;
+    }
+  } catch {
+    /* optional */
+  }
+
+  const userContent = context + styleBlock;
+
   try {
     const response = await llm.invoke([
       { role: "system", content: systemPrompt },
-      { role: "user", content: context },
+      { role: "user", content: userContent },
     ]);
 
     const text =
@@ -143,7 +169,7 @@ export async function outreachNode(
       logger.warn("outreach", `Draft too long (${sentenceCount} sentences), asking for revision`);
       const revision = await llm.invoke([
         { role: "system", content: systemPrompt },
-        { role: "user", content: context },
+        { role: "user", content: userContent },
         {
           role: "assistant",
           content: text,

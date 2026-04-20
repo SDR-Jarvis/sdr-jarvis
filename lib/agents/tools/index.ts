@@ -436,6 +436,8 @@ export async function sendEmail(params: {
   replyTo?: string;
   inReplyTo?: string;
   references?: string;
+  /** Full Resend "from" when user uses custom verified domain; otherwise env default. */
+  fromOverride?: string;
 }): Promise<{
   success: boolean;
   messageId?: string;
@@ -444,7 +446,10 @@ export async function sendEmail(params: {
 }> {
   logger.step("send", `Sending email to ${params.to} — "${params.subject}"`);
 
-  const from = process.env.FROM_EMAIL || "onboarding@resend.dev";
+  const from =
+    params.fromOverride?.trim() ||
+    process.env.FROM_EMAIL ||
+    "onboarding@resend.dev";
   const domain = extractSenderDomain(from);
   const rfcMessageId = generateRfcMessageId(domain);
 
