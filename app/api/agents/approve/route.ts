@@ -100,11 +100,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, action: "rejected" });
   }
 
+  const { data: interactionRow } = await supabase
+    .from("interactions")
+    .select("metadata, sequence_step, ai_draft_subject, ai_draft_body")
+    .eq("id", approval.interaction_id)
+    .maybeSingle();
+
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select(
+      "email_opt_out_footer, postal_address, warmup_daily_send_cap, full_name, sending_mode, sending_domain"
+    )
+    .eq("id", user.id)
+    .single();
+
   // ── APPROVE or EDIT+APPROVE ─────────────────
   const subject =
     action === "edit" && editedSubject ? editedSubject : approval.preview_subject;
   const emailBody =
     action === "edit" && editedBody ? editedBody : approval.preview_body;
+
+  const extProfile = profileRow as {
+    sending_mode?: string | null;
+    sending_domain?: string | null;
+    full_name?: string | null;
+  } | null;
+  const sendingMode = extProfile?.sending_mode ?? "shared";
+  const sendingDomain = extProfile?.sending_domain?.trim();
+  const displayName = extProfile?.full_name?.trim() || "Hello";
+  const fromOverride =
+    sendingMode === "custom" && sendingDomain
+      ? `${displayName} <hello@${sendingDomain}>`
+      : undefined;
 
   if (!lead?.email) {
     logger.warn("approval", `No email for ${leadName} — can't send`);
@@ -122,12 +149,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: profileRow } = await supabase
-    .from("profiles")
-    .select("email_opt_out_footer, postal_address, warmup_daily_send_cap, full_name")
-    .eq("id", user.id)
-    .single();
-
   const warmupCap =
     (profileRow as { warmup_daily_send_cap?: number } | null)
       ?.warmup_daily_send_cap ?? 20;
@@ -135,7 +156,7 @@ export async function POST(req: NextRequest) {
   if (sentToday >= warmupCap) {
     return NextResponse.json(
       {
-        error: `Daily send limit reached (${warmupCap} sends per UTC day, warmup guardrail). Increase the cap in Settings → Compliance & deliverability or wait until tomorrow.`,
+        error: `Daily send limit reached (${warmupCap} sends per UTC day, warmup guardrail). Increase the cap in Settings → Legal footer or wait until tomorrow.`,
       },
       { status: 429 }
     );
@@ -183,10 +204,26 @@ export async function POST(req: NextRequest) {
       .eq("id", approval.interaction_id);
   }
 
+  const aiSub =
+    (interactionRow as { ai_draft_subject?: string | null } | null)
+      ?.ai_draft_subject ?? approval.preview_subject;
+  const aiBody =
+    (interactionRow as { ai_draft_body?: string | null } | null)?.ai_draft_body ??
+    approval.preview_body;
+  const subjectEdited =
+    (subject ?? "").trim() !== (aiSub ?? "").trim();
+  const bodyEdited = (emailBody ?? "").trim() !== (aiBody ?? "").trim();
+  const wasEdited = action === "edit" || subjectEdited || bodyEdited;
+  const editDeltaChars = Math.abs(
+    ((subject ?? "") + (bodyToSend ?? "")).length -
+      ((String(aiSub ?? "")) + (String(aiBody ?? ""))).length
+  );
+
   const result = await sendEmail({
     to: lead.email,
     subject: subject ?? "",
     body: bodyToSend,
+    fromOverride,
   });
 
   // Update all records
@@ -200,20 +237,19 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", approvalId);
 
-  // Fetch existing interaction metadata to preserve sequence_step
-  const { data: existingInteraction } = await serviceClient
-    .from("interactions")
-    .select("metadata, sequence_step")
-    .eq("id", approval.interaction_id)
-    .single();
-
-  const existingMeta = (existingInteraction?.metadata ?? {}) as Record<string, unknown>;
+  const existingMeta = (interactionRow?.metadata ?? {}) as Record<string, unknown>;
 
   await serviceClient
     .from("interactions")
     .update({
       status: result.success ? "sent" : "failed",
       sent_at: result.success ? new Date().toISOString() : null,
+      subject: subject ?? undefined,
+      body: bodyToSend,
+      human_approved_subject: subject ?? null,
+      human_approved_body: bodyToSend,
+      was_edited: wasEdited,
+      edit_delta_chars: editDeltaChars,
       metadata: {
         ...existingMeta,
         messageId: result.messageId,
@@ -249,6 +285,18 @@ export async function POST(req: NextRequest) {
   if (result.success) {
     await incrementEmailsSent(user.id);
     logger.success("approval", `Email sent to ${lead.email}`);
+
+    const { data: priorSend } = await serviceClient
+      .from("profiles")
+      .select("first_email_sent_at")
+      .eq("id", user.id)
+      .single();
+    if (!(priorSend as { first_email_sent_at?: string | null } | null)?.first_email_sent_at) {
+      await serviceClient
+        .from("profiles")
+        .update({ first_email_sent_at: new Date().toISOString() })
+        .eq("id", user.id);
+    }
 
     const { data: dupSlack } = await serviceClient
       .from("audit_log")

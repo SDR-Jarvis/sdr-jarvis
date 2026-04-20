@@ -34,7 +34,7 @@ export default function EmailCompliancePage() {
             <li>Accurate From / identity information.</li>
             <li>
               A <strong className="text-white">valid physical postal address</strong> for your
-              business where required (configure in Settings → Compliance).
+              business where required (configure in Settings → Legal footer).
             </li>
             <li>
               A clear <strong className="text-white">opt-out</strong> — Jarvis appends a default

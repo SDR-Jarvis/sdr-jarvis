@@ -19,6 +19,7 @@ import {
   Lock,
   KeyRound,
   Circle,
+  Plug,
 } from "lucide-react";
 import {
   evaluatePassword,
@@ -29,8 +30,9 @@ import {
 import { BillingTab } from "./billing-tab";
 import { TestEmailButton } from "../test-email-button";
 import { TestSlackButton } from "../test-slack-button";
+import { getFriendlyAuthError } from "@/lib/auth/error-messages";
 
-type Tab = "profile" | "domain" | "billing" | "compliance";
+type Tab = "profile" | "domain" | "billing" | "compliance" | "integrations";
 
 export default function SettingsPage() {
   return (
@@ -50,7 +52,9 @@ function SettingsContent() {
 
   const initialTab = (searchParams.get("tab") as Tab) ?? "profile";
   const [tab, setTab] = useState<Tab>(
-    ["profile", "billing", "domain"].includes(initialTab) ? initialTab : "profile"
+    ["profile", "billing", "domain", "compliance", "integrations"].includes(initialTab)
+      ? initialTab
+      : "profile"
   );
 
   const [fullName, setFullName] = useState("");
@@ -68,6 +72,9 @@ function SettingsContent() {
   const [warmupDailyCap, setWarmupDailyCap] = useState(20);
   const [savingCompliance, setSavingCompliance] = useState(false);
   const [savedCompliance, setSavedCompliance] = useState(false);
+  const [sendingMode, setSendingMode] = useState<"shared" | "custom">("shared");
+  const [sendingModeSaving, setSendingModeSaving] = useState(false);
+  const [apolloApiKey, setApolloApiKey] = useState("");
 
   const [loginEmail, setLoginEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -109,6 +116,16 @@ function SettingsContent() {
           setPostalAddress(ext.postal_address);
         if (typeof ext.warmup_daily_send_cap === "number")
           setWarmupDailyCap(ext.warmup_daily_send_cap);
+        if (ext.sending_mode === "custom" || ext.sending_mode === "shared") {
+          setSendingMode(ext.sending_mode as "shared" | "custom");
+        } else {
+          setSendingMode("shared");
+        }
+        if (typeof ext.apollo_api_key === "string") {
+          setApolloApiKey(ext.apollo_api_key);
+        } else {
+          setApolloApiKey("");
+        }
       }
       setLoading(false);
     }
@@ -134,6 +151,8 @@ function SettingsContent() {
         timezone,
         tone_preferences: { formality, humor, signoff },
         onboarded: true,
+        sending_mode: sendingMode,
+        apollo_api_key: apolloApiKey.trim() || null,
       })
       .eq("id", user.id);
 
@@ -187,7 +206,7 @@ function SettingsContent() {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     setPwdSaving(false);
     if (error) {
-      setPwdError(error.message);
+      setPwdError(getFriendlyAuthError(error.message));
       return;
     }
     setNewPassword("");
@@ -210,7 +229,7 @@ function SettingsContent() {
     });
     setPwdResetSending(false);
     if (error) {
-      setPwdError(error.message);
+      setPwdError(getFriendlyAuthError(error.message));
       return;
     }
     setPwdSuccess("Check your email for a link to set a new password.");
@@ -230,35 +249,41 @@ function SettingsContent() {
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="mt-1 text-sm text-jarvis-muted">
-          Configure your profile, outreach style, and email domain.
+          Your profile, sending address, and legal footer.
         </p>
       </div>
 
       {/* Tab Switcher */}
-      <div className="flex gap-1 rounded-lg bg-jarvis-surface/40 p-1">
+      <div className="flex flex-wrap gap-1 rounded-lg bg-jarvis-surface/40 p-1">
         <TabButton
           active={tab === "profile"}
           onClick={() => setTab("profile")}
           icon={User}
-          label="Profile & Tone"
+          label="Your profile"
         />
         <TabButton
           active={tab === "billing"}
           onClick={() => setTab("billing")}
           icon={CreditCard}
-          label="Billing"
+          label="Plan & billing"
+        />
+        <TabButton
+          active={tab === "integrations"}
+          onClick={() => setTab("integrations")}
+          icon={Plug}
+          label="Integrations"
         />
         <TabButton
           active={tab === "domain"}
           onClick={() => setTab("domain")}
           icon={Globe}
-          label="Email Domain"
+          label="Sending address"
         />
         <TabButton
           active={tab === "compliance"}
           onClick={() => setTab("compliance")}
           icon={Shield}
-          label="Compliance"
+          label="Legal footer"
         />
       </div>
 
@@ -270,12 +295,13 @@ function SettingsContent() {
               Email delivery
             </h2>
             <p className="text-sm text-jarvis-muted">
-              Sends one message to your login email so you can confirm Resend and your domain are working before you email leads.
+              Sends one message to your login email so you can confirm outbound delivery and your domain are working
+              before you email leads.
             </p>
             <TestEmailButton />
             <div className="border-t border-white/10 pt-4">
               <p className="mb-2 text-sm text-jarvis-muted">
-                Requires <code className="text-xs text-jarvis-blue">SLACK_WEBHOOK_URL</code> in your deployment env. If unset, the server logs that Slack is not configured.
+                Optional Slack alerts. Configure the notification URL in your project settings; if it is missing, alerts stay off.
               </p>
               <TestSlackButton />
             </div>
@@ -527,14 +553,82 @@ function SettingsContent() {
 
       {tab === "billing" && <BillingTab />}
 
-      {tab === "domain" && <DomainSetupGuide />}
+      {tab === "integrations" && (
+        <div className="space-y-6">
+          <div className="jarvis-card space-y-4">
+            <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-jarvis-muted">
+              <Plug className="h-4 w-4" />
+              Integrations
+            </h2>
+            <p className="text-sm text-jarvis-muted leading-relaxed">
+              Already using Apollo? Save your key here to pull extra contacts into lead discovery. Optional — Jarvis works
+              without it.
+            </p>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">Apollo (optional)</label>
+              <input
+                type="password"
+                value={apolloApiKey}
+                onChange={(e) => setApolloApiKey(e.target.value)}
+                placeholder="Paste key — stored on your account only"
+                autoComplete="off"
+                className="jarvis-input font-mono text-sm"
+              />
+              <p className="mt-1 text-xs text-jarvis-muted/50">
+                Only used for discovery and sync features you trigger. You can clear this field anytime.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-white/10 pt-4">
+              {saved && (
+                <span className="text-sm text-jarvis-success">Settings saved.</span>
+              )}
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="jarvis-btn-primary"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "domain" && (
+        <div className="space-y-6">
+          <SendingModeCard
+            sendingMode={sendingMode}
+            onChange={setSendingMode}
+            saving={sendingModeSaving}
+            onSave={async () => {
+              const {
+                data: { user },
+              } = await supabase.auth.getUser();
+              if (!user) return;
+              setSendingModeSaving(true);
+              await supabase
+                .from("profiles")
+                .update({ sending_mode: sendingMode })
+                .eq("id", user.id);
+              setSendingModeSaving(false);
+            }}
+          />
+          <DomainSetupGuide />
+        </div>
+      )}
 
       {tab === "compliance" && (
         <div className="space-y-6">
           <div className="jarvis-card space-y-4">
             <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-jarvis-muted">
               <Shield className="h-4 w-4" />
-              Compliance &amp; deliverability
+              Legal footer
             </h2>
             <p className="text-sm text-jarvis-muted leading-relaxed">
               Jarvis <strong className="text-white">appends</strong> your opt-out line and postal
@@ -675,7 +769,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+      className={`flex min-w-[calc(50%-4px)] flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium transition-all sm:min-w-0 sm:gap-2 sm:px-3 sm:text-sm ${
         active
           ? "bg-jarvis-surface text-white shadow-sm"
           : "text-jarvis-muted hover:text-white"
@@ -684,6 +778,64 @@ function TabButton({
       <Icon className="h-4 w-4" />
       {label}
     </button>
+  );
+}
+
+function SendingModeCard({
+  sendingMode,
+  onChange,
+  saving,
+  onSave,
+}: {
+  sendingMode: "shared" | "custom";
+  onChange: (m: "shared" | "custom") => void;
+  saving: boolean;
+  onSave: () => Promise<void>;
+}) {
+  return (
+    <div className="jarvis-card space-y-4">
+      <h2 className="text-base font-semibold text-white">How do you want to send?</h2>
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-jarvis-border/80 p-3 hover:bg-white/[0.02]">
+        <input
+          type="radio"
+          name="sendingMode"
+          className="mt-1"
+          checked={sendingMode === "shared"}
+          onChange={() => onChange("shared")}
+        />
+        <div>
+          <p className="font-medium text-white">Send immediately</p>
+          <p className="text-sm text-jarvis-muted">
+            Mail goes out from a verified shared address — best for getting started. No DNS setup.
+          </p>
+        </div>
+      </label>
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-jarvis-border/80 p-3 hover:bg-white/[0.02]">
+        <input
+          type="radio"
+          name="sendingMode"
+          className="mt-1"
+          checked={sendingMode === "custom"}
+          onChange={() => onChange("custom")}
+        />
+        <div>
+          <p className="font-medium text-white">Use my own domain</p>
+          <p className="text-sm text-jarvis-muted">
+            Better branding and deliverability once DNS is verified (about 10 minutes, one time). Your
+            registrar&apos;s support can help with DNS.
+          </p>
+        </div>
+      </label>
+      <button
+        type="button"
+        onClick={() => void onSave()}
+        disabled={saving}
+        className="inline-flex items-center gap-2 rounded-md bg-jarvis-blue px-4 py-2 text-sm font-bold text-jarvis-dark hover:brightness-110 disabled:opacity-50"
+      >
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+        Save sending preference
+      </button>
+    </div>
   );
 }
 
@@ -795,7 +947,7 @@ function DomainSetupGuide() {
       .eq("id", user.id);
     setSaving(false);
     if (error) {
-      setGateError(error.message);
+      setGateError(getFriendlyAuthError(error.message));
       return;
     }
     setSendingDomain(next.sending_domain);
@@ -845,60 +997,60 @@ function DomainSetupGuide() {
     },
     {
       num: 2,
-      title: "Add your domain in Resend",
-      body: "Go to resend.com/domains → Add Domain → enter your domain. Resend will show you the DNS records you need to add.",
+      title: "Add your domain to your sending provider",
+      body: "In your outbound email provider’s dashboard, add this domain. They will show the exact DNS records to copy.",
       link: "https://resend.com/domains",
     },
     {
       num: 3,
       title: "Add DNS records",
-      body: "Add these records in your domain registrar's DNS settings. The exact values will come from Resend — the records below are templates.",
+      body: "Add these records in your domain registrar’s DNS settings. Your registrar’s support can walk you through it — it usually takes about 10 minutes and only needs to be done once. The records below are examples; always use the values your provider shows.",
       showDns: true,
     },
     {
       num: 4,
-      title: "Verify in Resend",
-      body: 'After adding DNS records, click "Verify" in Resend. DNS propagation takes 5 minutes to 48 hours. Once verified, the status turns green.',
+      title: "Verify the domain",
+      body: 'After adding DNS records, use “Verify” in your sending provider’s dashboard. DNS propagation can take from a few minutes up to 48 hours. Once verified, the status should show as ready.',
     },
     {
       num: 5,
-      title: "Update your environment",
-      body: "Change your FROM_EMAIL in .env.local to use the new domain: FROM_EMAIL=jarvis@yourdomain.com. Redeploy on Vercel.",
+      title: "Set your “from” address",
+      body: "Ask whoever manages your app deployment to set the verified outbound address (for example hello@yourdomain.com) in your project configuration, then redeploy so new sends use your domain.",
     },
     {
       num: 6,
       title: "Warm up your domain",
-      body: "Start low (e.g. 5–20 sends/day), then ramp gradually. Jarvis enforces your per-day send cap from Settings → Compliance; keep pipeline batches small on new domains.",
+      body: "Start low (e.g. 5–20 sends/day), then ramp gradually. Jarvis enforces your per-day send cap from Settings → Legal footer; keep pipeline batches small on new domains.",
     },
   ];
 
   const leanSteps = (domain: string): DomainStep[] => [
     {
       num: 1,
-      title: `Add “${domain}” in Resend`,
-      body: `In Resend, go to Domains → Add Domain and enter exactly: ${domain}. Resend will show the DNS records to add at your DNS host.`,
+      title: `Add “${domain}” to your sending provider`,
+      body: `In your outbound email provider’s dashboard, add the domain exactly as: ${domain}. They will show the DNS records to add at your DNS host.`,
       link: "https://resend.com/domains",
     },
     {
       num: 2,
       title: "Add DNS records",
-      body: "Add the records Resend gives you at your registrar or DNS provider (Cloudflare, etc.). The templates below are examples — always prefer the values from your Resend dashboard.",
+      body: "Add the records your provider gives you at your registrar or DNS host. The templates below are examples — always prefer the values from your provider’s dashboard.",
       showDns: true,
     },
     {
       num: 3,
-      title: "Verify in Resend",
-      body: 'After DNS propagates, click "Verify" in Resend until the domain shows as verified.',
+      title: "Verify the domain",
+      body: 'After DNS propagates, use “Verify” in your sending provider’s dashboard until the domain shows as ready.',
     },
     {
       num: 4,
       title: "Update your deployment",
-      body: `Set FROM_EMAIL to an address on this domain (e.g. FROM_EMAIL=sales@${domain}) in your project environment, then redeploy.`,
+      body: `Ask your technical contact to set the outbound “from” address to an address on this domain (for example sales@${domain}) in your hosted project settings, then redeploy.`,
     },
     {
       num: 5,
       title: "Warm up your domain",
-      body: "Start with a low daily cap in Settings → Compliance and small pipeline batches until reputation builds.",
+      body: "Start with a low daily cap in Settings → Legal footer and small pipeline batches until reputation builds.",
     },
   ];
 
@@ -922,12 +1074,8 @@ function DomainSetupGuide() {
           Custom Email Domain
         </h2>
         <p className="text-sm text-jarvis-muted leading-relaxed">
-          Sending from{" "}
-          <code className="rounded bg-white/5 px-1.5 py-0.5 text-xs text-jarvis-blue">
-            onboarding@resend.dev
-          </code>{" "}
-          is fine for testing. For real outreach, mail should come from a domain you control (usually one your company
-          already has).
+          Sending from our shared test address is fine for testing. For real outreach, mail should come from a domain you
+          control (usually one your company already has).
         </p>
       </div>
 
@@ -970,7 +1118,7 @@ function DomainSetupGuide() {
             disabled={saving}
             className="text-left text-sm text-jarvis-blue hover:underline disabled:opacity-50"
           >
-            I don&apos;t have a domain yet — show the full guide (buying a domain, Resend, DNS, and warm-up)
+            I don&apos;t have a domain yet — show the full guide (buying a domain, DNS, verification, and warm-up)
           </button>
         </div>
       )}
