@@ -561,8 +561,8 @@ function SettingsContent() {
               Integrations
             </h2>
             <p className="text-sm text-jarvis-muted leading-relaxed">
-              Already using Apollo? Save your key here to pull extra contacts into lead discovery. Optional — Jarvis works
-              without it.
+              Already using Apollo? Save a <strong className="text-white">master</strong> API key here (from Apollo →
+              Settings → Integrations → API) so discovery can call their search API. Optional — Jarvis works without it.
             </p>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">Apollo (optional)</label>

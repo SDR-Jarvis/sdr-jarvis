@@ -268,18 +268,37 @@ async function discoverApollo(
     any: ["1,200"],
   };
 
-  const body = {
-    api_key: apiKey,
-    person_titles: signals.roles.slice(0, 5),
-    q_organization_keyword_tags: signals.industries.slice(0, 3),
-    organization_num_employees_ranges: sizeMap[signals.company_size] ?? ["1,50"],
-    per_page: 15,
-  };
+  // Apollo (2024+): People API Search — master key in `X-Api-Key` header only;
+  // POST /api/v1/mixed_people/api_search with filters as query params.
+  const ranges = sizeMap[signals.company_size] ?? ["1,50"];
+  const params = new URLSearchParams();
+  for (const t of signals.roles.slice(0, 5)) {
+    const v = t.trim();
+    if (v) params.append("person_titles[]", v);
+  }
+  for (const r of ranges) {
+    params.append("organization_num_employees_ranges[]", r);
+  }
+  const keywordBits = [
+    ...signals.industries.slice(0, 3),
+    ...signals.keywords.slice(0, 4),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  if (keywordBits) params.set("q_keywords", keywordBits.slice(0, 200));
+  params.set("per_page", "15");
+  params.set("page", "1");
 
-  const response = await fetch("https://api.apollo.io/v1/mixed_people/search", {
+  const url = `https://api.apollo.io/api/v1/mixed_people/api_search?${params.toString()}`;
+
+  const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Key": apiKey,
+    },
+    body: "{}",
   });
   if (!response.ok) return [];
 
@@ -289,8 +308,15 @@ async function discoverApollo(
 
   return (data.people ?? []).map((p) => {
     const org = p.organization as Record<string, unknown> | undefined;
+    const last =
+      (typeof p.last_name === "string" && p.last_name) ||
+      (typeof p.last_name_obfuscated === "string" && p.last_name_obfuscated) ||
+      "";
+    const first = typeof p.first_name === "string" ? p.first_name : "";
+    const name = `${first} ${last}`.trim() || "Unknown";
     return emptyLead({
-      name: `${(p.first_name as string) ?? ""} ${(p.last_name as string) ?? ""}`.trim(),
+      name,
+      // People API Search does not return email/phone; enrichment is a separate call.
       email: (p.email as string) ?? null,
       title: (p.title as string) ?? null,
       company: (org?.name as string) ?? null,
