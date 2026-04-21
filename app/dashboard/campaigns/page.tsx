@@ -13,6 +13,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils";
+import { PRODUCT_TAGLINE } from "@/lib/product-copy";
 
 const STATUS_CONFIG: Record<
   string,
@@ -42,11 +43,12 @@ export default async function CampaignsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Campaigns</h1>
+          <p className="text-xs font-medium uppercase tracking-wider text-jarvis-blue/80">{PRODUCT_TAGLINE}</p>
+          <h1 className="mt-0.5 text-2xl font-bold text-white">Campaigns</h1>
           <p className="mt-1 text-sm text-jarvis-muted">
             {campaigns?.length
-              ? `${campaigns.length} campaign${campaigns.length > 1 ? "s" : ""} total`
-              : "No campaigns yet. Create one to get started."}
+              ? `${campaigns.length} workspace${campaigns.length > 1 ? "s" : ""} for your outbound`
+              : "Create a campaign, add leads, then run the pipeline to get drafts for approval."}
           </p>
         </div>
         <Link href="/dashboard/campaigns/new" className="jarvis-btn-primary">
@@ -58,12 +60,10 @@ export default async function CampaignsPage() {
       {!campaigns?.length ? (
         <div className="jarvis-card flex flex-col items-center justify-center py-16 text-center">
           <Send className="mb-4 h-10 w-10 text-jarvis-blue/30" />
-          <h3 className="text-lg font-semibold text-white">
-            Launch your first campaign
-          </h3>
+          <h3 className="text-lg font-semibold text-white">Your first campaign</h3>
           <p className="mt-2 max-w-md text-sm text-jarvis-muted">
-            Define your ICP, upload leads, and let Jarvis research and draft
-            personalized outreach for each prospect.
+            One place for a batch of leads and their emails. Jarvis researches and drafts — you approve before anything
+            sends.
           </p>
           <Link
             href="/dashboard/campaigns/new"

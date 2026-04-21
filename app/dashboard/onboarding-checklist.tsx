@@ -44,8 +44,8 @@ interface ChecklistData {
 const CHECKLIST: ChecklistItem[] = [
   {
     id: "test_email",
-    label: "Connect Resend — send a test email",
-    description: "Confirm mail reaches your inbox (Settings → Profile → Email delivery).",
+    label: "Send a test email",
+    description: "Confirm messages reach your inbox (Settings → Profile → Email delivery).",
     href: "/dashboard/settings?tab=profile#test-email",
     icon: Mail,
     check: (d) => d.hasTestEmail,
@@ -100,8 +100,8 @@ const CHECKLIST: ChecklistItem[] = [
   },
   {
     id: "run",
-    label: "Run your first pipeline",
-    description: "Research + drafts (try Dry run first to save LLM cost — campaign page).",
+    label: "Run research & drafts",
+    description: "From a campaign, generate research and drafts — use a preview run first if you want to test without sending.",
     href: "/dashboard/campaigns",
     icon: Sparkles,
     check: (d) => d.hasRun,
@@ -109,7 +109,7 @@ const CHECKLIST: ChecklistItem[] = [
   {
     id: "approve",
     label: "Approve or edit a draft",
-    description: "Human-in-the-loop — review research context, then send.",
+    description: "Review the short context Jarvis found, tweak the message if you like, then approve.",
     href: "/dashboard/approvals",
     icon: PenLine,
     check: (d) => d.hasReviewedDraft,

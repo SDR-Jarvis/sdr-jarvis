@@ -16,6 +16,7 @@ import { getJarvisGreeting, formatRelativeTime } from "@/lib/utils";
 import { ApprovalActions } from "./approval-actions";
 import { OnboardingChecklist } from "./onboarding-checklist";
 import { QuickStartBanner } from "./quick-start-banner";
+import { PRODUCT_SUBLINE, PRODUCT_TAGLINE } from "@/lib/product-copy";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -81,10 +82,13 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-bold tracking-tight text-white">
             {getJarvisGreeting()}
           </h1>
-          <p className="mt-1 text-sm text-jarvis-muted">
+          <p className="mt-1 max-w-xl text-sm text-jarvis-muted">
             {pendingApprovals.length > 0
-              ? `${pendingApprovals.length} message${pendingApprovals.length > 1 ? "s" : ""} awaiting your approval.`
-              : "All systems operational. No pending actions."}
+              ? `${pendingApprovals.length} draft${pendingApprovals.length > 1 ? "s" : ""} ready — you approve every send.`
+              : PRODUCT_SUBLINE}
+          </p>
+          <p className="mt-2 text-xs font-medium uppercase tracking-wider text-jarvis-blue/80">
+            {PRODUCT_TAGLINE}
           </p>
         </div>
         <div className="flex gap-3">
@@ -152,22 +156,16 @@ export default async function DashboardPage() {
         {pendingApprovals.length === 0 ? (
           <div className="jarvis-card flex flex-col items-center justify-center py-12 text-center">
             <CheckCircle className="mb-3 h-8 w-8 text-jarvis-success/40" />
-            <p className="text-sm text-jarvis-muted">
-              Nothing waiting. Run a campaign with leads that have emails — drafts show up here for approval.
+            <p className="max-w-md text-sm text-jarvis-muted">
+              When Jarvis drafts an email, it lands here first. Add leads, run your pipeline, then approve what goes
+              out.
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
-              <a
-                href="/dashboard/leads/discover"
-                className="text-xs font-medium text-jarvis-blue hover:underline"
-              >
-                Discover leads
+              <a href="/dashboard/leads/discover" className="jarvis-btn-primary text-xs">
+                Find leads
               </a>
-              <span className="text-jarvis-muted/40">·</span>
-              <a
-                href="/dashboard/campaigns"
-                className="text-xs font-medium text-jarvis-blue hover:underline"
-              >
-                Run pipeline
+              <a href="/dashboard/campaigns" className="jarvis-btn-ghost text-xs">
+                Open campaigns
               </a>
             </div>
           </div>
@@ -238,10 +236,12 @@ export default async function DashboardPage() {
         {recentActivity.length === 0 ? (
           <div className="jarvis-card flex flex-col items-center justify-center py-12 text-center">
             <Zap className="mb-3 h-8 w-8 text-jarvis-blue/30" />
-            <p className="text-sm text-jarvis-muted">
-              No activity yet. Start a campaign and I&apos;ll track everything
-              here.
+            <p className="max-w-md text-sm text-jarvis-muted">
+              Sends, approvals, and replies show up here as you go. Start with a campaign and a small batch of leads.
             </p>
+            <a href="/dashboard/campaigns/new" className="mt-4 jarvis-btn-primary text-xs">
+              New campaign
+            </a>
           </div>
         ) : (
           <div className="space-y-2">

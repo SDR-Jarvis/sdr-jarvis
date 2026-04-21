@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { CheckCircle, Clock, Mail, Linkedin } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils";
 import { ApprovalActions } from "../approval-actions";
+import { APPROVALS_CONTROL_LINE, PRODUCT_TAGLINE } from "@/lib/product-copy";
 
 interface ApprovalRecord {
   id: string;
@@ -47,10 +48,10 @@ export default async function ApprovalsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-white">Approval Queue</h1>
-        <p className="mt-1 text-sm text-jarvis-muted">
-          Every outbound message passes through here. Nothing goes out without
-          your sign-off.
+        <p className="text-xs font-medium uppercase tracking-wider text-jarvis-blue/80">{PRODUCT_TAGLINE}</p>
+        <h1 className="mt-1 text-2xl font-bold text-white">Your inbox</h1>
+        <p className="mt-1 max-w-xl text-sm text-jarvis-muted leading-relaxed">
+          {APPROVALS_CONTROL_LINE} Read the draft, tweak if you want, then send or skip.
         </p>
       </div>
 
@@ -62,13 +63,14 @@ export default async function ApprovalsPage() {
         </h2>
 
         {pending.length === 0 ? (
-          <div className="jarvis-card flex items-center justify-center py-10 text-center">
-            <div>
-              <CheckCircle className="mx-auto mb-2 h-8 w-8 text-jarvis-success/40" />
-              <p className="text-sm text-jarvis-muted">
-                All caught up. No messages waiting for review.
-              </p>
-            </div>
+          <div className="jarvis-card flex flex-col items-center justify-center py-12 text-center">
+            <CheckCircle className="mx-auto mb-3 h-8 w-8 text-jarvis-success/40" />
+            <p className="max-w-md text-sm text-jarvis-muted">
+              Nothing to review right now. When Jarvis finishes a draft, it shows up here — always before anything sends.
+            </p>
+            <a href="/dashboard/campaigns" className="mt-4 jarvis-btn-primary text-xs">
+              Run pipeline
+            </a>
           </div>
         ) : (
           <div className="space-y-4">
@@ -136,7 +138,7 @@ function ResearchSnippet({
   return (
     <div className="rounded-md border border-jarvis-blue/20 bg-jarvis-blue/[0.06] p-3 text-xs text-jarvis-muted">
       <p className="font-semibold uppercase tracking-wider text-jarvis-blue/80">
-        Research context
+        Quick context
       </p>
       {summary && (
         <p className="mt-2 leading-relaxed text-jarvis-muted">{summary}</p>
@@ -157,7 +159,10 @@ function ApprovalCard({ approval }: { approval: ApprovalRecord }) {
   const campaign = approval.campaigns;
 
   return (
-    <div className="jarvis-card jarvis-glow space-y-4">
+    <div className="jarvis-card jarvis-glow space-y-4 border-jarvis-border/80">
+      <p className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[11px] text-jarvis-muted/90">
+        {APPROVALS_CONTROL_LINE}
+      </p>
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -200,17 +205,18 @@ function ApprovalCard({ approval }: { approval: ApprovalRecord }) {
       <ResearchSnippet research={lead?.research_data} />
 
       <div className="rounded-md border border-jarvis-border bg-jarvis-dark p-4">
-        <p className="text-sm font-medium text-jarvis-blue">
-          {approval.preview_subject}
-        </p>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-jarvis-muted">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-jarvis-muted/60">Subject</p>
+        <p className="mt-1 text-sm font-semibold text-white">{approval.preview_subject}</p>
+        <p className="mt-4 text-[10px] font-semibold uppercase tracking-wider text-jarvis-muted/60">Email</p>
+        <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-jarvis-muted/95">
           {approval.preview_body}
         </p>
       </div>
 
       {approval.agent_notes && (
-        <p className="rounded-md bg-jarvis-blue/5 px-3 py-2 text-xs italic text-jarvis-blue/70">
-          Jarvis: {approval.agent_notes}
+        <p className="rounded-md bg-jarvis-blue/5 px-3 py-2 text-xs text-jarvis-blue/80">
+          <span className="font-semibold text-jarvis-blue">Why this angle: </span>
+          {approval.agent_notes}
         </p>
       )}
 

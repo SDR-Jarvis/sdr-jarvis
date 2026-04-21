@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { PRODUCT_TAGLINE } from "@/lib/product-copy";
 import {
   Mail,
   MessageSquare,
@@ -157,7 +158,7 @@ export default async function AnalyticsPage() {
   // Jarvis insights
   const insights: string[] = [];
   if (pending > 0) {
-    insights.push(`You have ${pending} message${pending > 1 ? "s" : ""} in the approval queue. Your leads are cooling off, sir.`);
+    insights.push(`You have ${pending} draft${pending > 1 ? "s" : ""} waiting in Approvals — worth a quick review.`);
   }
   if (parseFloat(bounceRate) > 10) {
     insights.push(`Bounce rate is ${bounceRate}% — consider cleaning your lead list. Bad data wastes good emails.`);
@@ -166,7 +167,7 @@ export default async function AnalyticsPage() {
     insights.push(`Reply rate is ${replyRate}%. Industry average is 5-15%. Consider testing different subject lines or hooks.`);
   }
   if (hotCount > 0 && booked === 0) {
-    insights.push(`You have ${hotCount} hot lead${hotCount > 1 ? "s" : ""} but no meetings booked. Time to close, sir.`);
+    insights.push(`You have ${hotCount} interested lead${hotCount > 1 ? "s" : ""} — follow up while the thread is warm.`);
   }
   if (sent > 0 && parseFloat(openRate) > 0 && parseFloat(openRate) < 20) {
     insights.push(`Open rate is ${openRate}%. Try shorter subject lines (4-6 words) and avoid spam trigger words.`);
@@ -181,9 +182,10 @@ export default async function AnalyticsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-white">Analytics</h1>
-        <p className="mt-1 text-sm text-jarvis-muted">
-          Real-time pipeline performance across all campaigns.
+        <p className="text-xs font-medium uppercase tracking-wider text-jarvis-blue/80">{PRODUCT_TAGLINE}</p>
+        <h1 className="mt-0.5 text-2xl font-bold text-white">Analytics</h1>
+        <p className="mt-1 max-w-xl text-sm text-jarvis-muted">
+          A simple view of volume and engagement across your campaigns — so you know what to tweak next.
         </p>
       </div>
 

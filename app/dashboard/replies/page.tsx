@@ -15,6 +15,7 @@ import {
   Inbox,
 } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils";
+import { PRODUCT_TAGLINE } from "@/lib/product-copy";
 import { ReplyActions } from "./reply-actions";
 
 interface ReplyRecord {
@@ -107,9 +108,10 @@ export default async function RepliesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Replies</h1>
-        <p className="mt-1 text-sm text-jarvis-muted">
-          Jarvis analyzes every reply and suggests the best next move.
+        <p className="text-xs font-medium uppercase tracking-wider text-jarvis-blue/80">{PRODUCT_TAGLINE}</p>
+        <h1 className="mt-0.5 text-2xl font-bold text-white">Replies</h1>
+        <p className="mt-1 max-w-xl text-sm text-jarvis-muted">
+          When someone writes back, we summarize intent and suggest a sensible next step — you stay in the loop.
         </p>
       </div>
 
@@ -126,9 +128,13 @@ export default async function RepliesPage() {
       {replyList.length === 0 ? (
         <div className="jarvis-card flex flex-col items-center justify-center py-16 text-center">
           <Inbox className="mb-4 h-10 w-10 text-jarvis-blue/30" />
-          <p className="text-sm text-jarvis-muted">
-            No replies yet. Once prospects respond, Jarvis will analyze them here.
+          <p className="max-w-md text-sm text-jarvis-muted">
+            Replies show up here after you send approved emails. Start small: a handful of leads, clear offer, then
+            iterate.
           </p>
+          <a href="/dashboard/approvals" className="mt-4 jarvis-btn-primary text-xs">
+            Open approvals
+          </a>
         </div>
       ) : (
         <div className="space-y-4">
@@ -190,7 +196,7 @@ export default async function RepliesPage() {
                   <div className="flex items-start gap-4 rounded-md bg-white/[0.02] p-3">
                     <div className="flex-1">
                       <p className="text-[11px] text-jarvis-muted">
-                        <span className="font-medium text-white">Jarvis says: </span>
+                        <span className="font-medium text-white">Suggested read: </span>
                         {qual.reasoning}
                       </p>
                     </div>

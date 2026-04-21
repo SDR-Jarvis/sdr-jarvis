@@ -12,7 +12,9 @@ import {
   CheckCircle,
   AlertCircle,
   X,
+  ClipboardList,
 } from "lucide-react";
+import { IMPORT_INVITE, PRODUCT_TAGLINE } from "@/lib/product-copy";
 
 type CsvRow = Record<string, string>;
 
@@ -73,6 +75,29 @@ function autoMapColumns(
   return mapping;
 }
 
+function extractEmailsFromPaste(text: string): string[] {
+  const matches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+  return matches ? [...new Set(matches.map((e) => e.toLowerCase()))] : [];
+}
+
+function namePartsFromEmail(email: string): { first: string; last: string } {
+  const local = (email.split("@")[0] ?? "contact").replace(/[^a-zA-Z0-9._-]+/g, ".");
+  const segments = local.split(/[._-]+/).filter(Boolean);
+  const cap = (s: string) =>
+    s.length ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : "";
+  if (segments.length >= 2) {
+    return { first: cap(segments[0]), last: cap(segments.slice(1).join(" ")) };
+  }
+  if (segments[0]) return { first: cap(segments[0]), last: " " };
+  return { first: "Contact", last: " " };
+}
+
+function companyGuessFromEmail(email: string): string {
+  const domain = email.split("@")[1]?.split(".")[0] ?? "";
+  if (!domain) return "Unknown";
+  return domain.charAt(0).toUpperCase() + domain.slice(1).toLowerCase();
+}
+
 export default function ImportLeadsPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -87,6 +112,8 @@ export default function ImportLeadsPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: number; errors: number } | null>(null);
   const [error, setError] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const [pasteLoading, setPasteLoading] = useState(false);
 
   useEffect(() => {
     async function loadCampaigns() {
@@ -212,6 +239,57 @@ export default function ImportLeadsPage() {
     setResult({ success: data?.length ?? 0, errors: csvRows.length - (data?.length ?? 0) });
   }
 
+  async function handlePasteImport() {
+    setError("");
+    setResult(null);
+    if (!campaignId) {
+      setError("Select a campaign first.");
+      return;
+    }
+    const emails = extractEmailsFromPaste(pasteText);
+    if (emails.length === 0) {
+      setError("Paste at least one valid email address.");
+      return;
+    }
+
+    setPasteLoading(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setError("Not authenticated.");
+      setPasteLoading(false);
+      return;
+    }
+
+    const rows = emails.map((email) => {
+      const { first, last } = namePartsFromEmail(email);
+      return {
+        campaign_id: campaignId,
+        user_id: user.id,
+        first_name: first,
+        last_name: last,
+        email,
+        company: companyGuessFromEmail(email),
+        company_url: null,
+        linkedin_url: null,
+        title: null,
+        status: "new" as const,
+      };
+    });
+
+    const { data, error: insertError } = await supabase.from("leads").insert(rows).select("id");
+    setPasteLoading(false);
+
+    if (insertError) {
+      setError("Could not add those contacts. Try again or use a CSV.");
+      return;
+    }
+
+    setPasteText("");
+    setResult({ success: data?.length ?? 0, errors: emails.length - (data?.length ?? 0) });
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex items-center gap-3">
@@ -222,10 +300,9 @@ export default function ImportLeadsPage() {
           <ArrowLeft className="h-4 w-4 text-jarvis-muted" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-white">Import Leads</h1>
-          <p className="text-sm text-jarvis-muted">
-            Upload a CSV and map columns to lead fields.
-          </p>
+          <p className="text-xs font-medium uppercase tracking-wider text-jarvis-blue/80">{PRODUCT_TAGLINE}</p>
+          <h1 className="mt-0.5 text-2xl font-bold text-white">Import leads</h1>
+          <p className="mt-1 max-w-xl text-sm text-jarvis-muted leading-relaxed">{IMPORT_INVITE}</p>
         </div>
       </div>
 
@@ -249,38 +326,89 @@ export default function ImportLeadsPage() {
         </div>
       )}
 
-      {/* Step 1: Upload */}
+      {/* Step 1: Paste or CSV */}
       {csvRows.length === 0 && !result && (
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
-          className={`jarvis-card flex cursor-pointer flex-col items-center justify-center py-16 transition-all ${
-            dragOver
-              ? "border-jarvis-blue bg-jarvis-blue/5 jarvis-glow"
-              : "hover:border-jarvis-blue/30"
-          }`}
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv"
-            onChange={handleFileInput}
-            className="hidden"
-          />
-          <Upload
-            className={`mb-4 h-10 w-10 ${dragOver ? "text-jarvis-blue" : "text-jarvis-muted/40"}`}
-          />
-          <p className="text-sm font-medium text-white">
-            Drag & drop a CSV file, or click to browse
-          </p>
-          <p className="mt-1 text-xs text-jarvis-muted">
-            Expected columns: First Name, Last Name, Email, Company, Title, LinkedIn URL
-          </p>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="jarvis-card flex flex-col space-y-3">
+            <div className="flex items-center gap-2 text-jarvis-muted">
+              <ClipboardList className="h-4 w-4 text-jarvis-blue" />
+              <span className="text-xs font-semibold uppercase tracking-wider">Paste emails</span>
+            </div>
+            <p className="text-xs text-jarvis-muted/80">
+              One per line or separated by commas. We&apos;ll fill names from the address and guess a company from the
+              domain — you can refine later.
+            </p>
+            <textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              rows={6}
+              placeholder={"alex@acme.com\nfounder@startup.io"}
+              className="jarvis-input resize-none font-mono text-xs"
+            />
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-jarvis-muted">Campaign</label>
+              {campaigns.length === 0 ? (
+                <p className="text-xs text-jarvis-danger">
+                  <Link href="/dashboard/campaigns/new" className="text-jarvis-blue hover:underline">
+                    Create a campaign
+                  </Link>{" "}
+                  first.
+                </p>
+              ) : (
+                <select
+                  value={campaignId}
+                  onChange={(e) => setCampaignId(e.target.value)}
+                  className="jarvis-input text-sm"
+                >
+                  {campaigns.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => void handlePasteImport()}
+              disabled={pasteLoading || !campaignId || !pasteText.trim()}
+              className="jarvis-btn-primary text-sm"
+            >
+              {pasteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {pasteLoading ? "Adding…" : "Add pasted emails"}
+            </button>
+          </div>
+
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            onClick={() => fileRef.current?.click()}
+            className={`jarvis-card flex cursor-pointer flex-col items-center justify-center py-12 transition-all ${
+              dragOver
+                ? "border-jarvis-blue bg-jarvis-blue/5 jarvis-glow"
+                : "hover:border-jarvis-blue/30"
+            }`}
+          >
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv"
+              onChange={handleFileInput}
+              className="hidden"
+            />
+            <FileSpreadsheet
+              className={`mb-3 h-10 w-10 ${dragOver ? "text-jarvis-blue" : "text-jarvis-muted/40"}`}
+            />
+            <p className="text-sm font-semibold text-white">Upload a CSV</p>
+            <p className="mt-1 max-w-[220px] text-center text-xs text-jarvis-muted">
+              Best for spreadsheets. We&apos;ll match common column names for you.
+            </p>
+            <p className="mt-3 text-xs font-medium text-jarvis-blue/90">Click or drag file here</p>
+          </div>
         </div>
       )}
 

@@ -5,12 +5,17 @@ import { getFriendlyAuthError } from "@/lib/auth/error-messages";
 
 export type OAuthProvider = "google" | "github" | "linkedin_oidc";
 
+/**
+ * OAuth PKCE stores a short-lived verifier in cookies on the origin that starts sign-in.
+ * The callback must run on that same origin — do not send users to NEXT_PUBLIC_APP_URL
+ * if they are browsing another host (e.g. localhost vs production), or exchange fails.
+ */
 function redirectUrl(): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
-  if (typeof window !== "undefined" && !base) {
+  if (typeof window !== "undefined") {
     return `${window.location.origin}/auth/callback`;
   }
-  return `${base || (typeof window !== "undefined" ? window.location.origin : "")}/auth/callback`;
+  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+  return `${base}/auth/callback`;
 }
 
 export async function signInWithGoogle() {

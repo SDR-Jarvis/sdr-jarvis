@@ -10,9 +10,9 @@ export function QuickStartBanner({ show }: { show: boolean }) {
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-jarvis-blue/25 bg-jarvis-blue/[0.06] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p className="text-sm font-semibold text-white">Quick start (2 minutes)</p>
+        <p className="text-sm font-semibold text-white">Quick start</p>
         <p className="mt-0.5 text-xs text-jarvis-muted">
-          Send yourself a test email, then discover or import leads and run a campaign.
+          Send yourself a test message, add a few leads, then run your pipeline — drafts land in Approvals first.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">

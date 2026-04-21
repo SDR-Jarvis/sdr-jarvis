@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
   if (rawLeads.length > remaining) {
     return NextResponse.json(
       {
-        error: `Daily lead processing cap is ${cap} (UTC day). Already scheduled ${usedToday} leads today; this run has ${rawLeads.length}. Remaining budget: ${remaining}. Try tomorrow, lower the batch, or ask support to raise DAILY_LEAD_PROCESSING_CAP.`,
+        error: `Daily processing limit is ${cap} (UTC calendar day). You’ve already queued ${usedToday} leads today; this run has ${rawLeads.length}. You can queue ${remaining} more today — try a smaller batch, wait until tomorrow, or contact support if you need a higher limit.`,
       },
       { status: 429 }
     );

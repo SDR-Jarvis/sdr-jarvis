@@ -301,7 +301,7 @@ function SettingsContent() {
             <TestEmailButton />
             <div className="border-t border-white/10 pt-4">
               <p className="mb-2 text-sm text-jarvis-muted">
-                Optional Slack alerts. Configure the notification URL in your project settings; if it is missing, alerts stay off.
+                Optional Slack alerts. Paste an incoming Slack URL from your workspace if you want activity pings; leave blank to keep them off.
               </p>
               <TestSlackButton />
             </div>
@@ -561,8 +561,8 @@ function SettingsContent() {
               Integrations
             </h2>
             <p className="text-sm text-jarvis-muted leading-relaxed">
-              Already using Apollo? Save a <strong className="text-white">master</strong> API key here (from Apollo →
-              Settings → Integrations → API) so discovery can call their search API. Optional — Jarvis works without it.
+              Already using Apollo? Paste your connection key from Apollo → Settings → Integrations → API so optional
+              discovery can pull extra matches. Leave blank if you don&apos;t use it.
             </p>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">Apollo (optional)</label>
@@ -710,17 +710,16 @@ function SettingsContent() {
           <div className="jarvis-card text-sm text-jarvis-muted leading-relaxed">
             <p className="font-medium text-white">Domain authentication</p>
             <p className="mt-2">
-              Configure SPF, DKIM, and DMARC on a <strong className="text-white">separate</strong>{" "}
-              sending domain where possible. Follow the{" "}
+              Configure SPF, DKIM, and DMARC on a <strong className="text-white">separate</strong> sending domain when
+              you&apos;re ready. Use the{" "}
               <button
                 type="button"
                 onClick={() => setTab("domain")}
                 className="text-jarvis-blue hover:underline"
               >
-                Email Domain
+                Sending address
               </button>{" "}
-              tab. Daily <strong className="text-white">pipeline</strong> volume is also capped
-              server-side (see <code className="rounded bg-white/5 px-1">DAILY_LEAD_PROCESSING_CAP</code>).
+              tab. Daily pipeline volume is also capped automatically to protect deliverability.
             </p>
           </div>
         </div>
@@ -795,7 +794,13 @@ function SendingModeCard({
   return (
     <div className="jarvis-card space-y-4">
       <h2 className="text-base font-semibold text-white">How do you want to send?</h2>
-      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-jarvis-border/80 p-3 hover:bg-white/[0.02]">
+      <label
+        className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-white/[0.02] ${
+          sendingMode === "shared"
+            ? "border-jarvis-blue/50 bg-jarvis-blue/[0.07]"
+            : "border-jarvis-border/80"
+        }`}
+      >
         <input
           type="radio"
           name="sendingMode"
@@ -806,11 +811,17 @@ function SendingModeCard({
         <div>
           <p className="font-medium text-white">Send immediately</p>
           <p className="text-sm text-jarvis-muted">
-            Mail goes out from a verified shared address — best for getting started. No DNS setup.
+            Recommended to start: mail from a verified shared address. No DNS — you can send your first batch right away.
           </p>
         </div>
       </label>
-      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-jarvis-border/80 p-3 hover:bg-white/[0.02]">
+      <label
+        className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-white/[0.02] ${
+          sendingMode === "custom"
+            ? "border-jarvis-blue/50 bg-jarvis-blue/[0.07]"
+            : "border-jarvis-border/80"
+        }`}
+      >
         <input
           type="radio"
           name="sendingMode"
@@ -859,7 +870,7 @@ function dnsRecordTemplates(domain: string) {
       name: "@",
       value: "v=spf1 include:amazonses.com ~all",
       purpose:
-        "SPF — Tells receiving servers that Amazon SES (used by Resend) is authorized to send email for your domain.",
+        "SPF — Tells receiving servers your outbound provider is allowed to send email for your domain.",
     },
     {
       id: "dkim1",
@@ -867,7 +878,7 @@ function dnsRecordTemplates(domain: string) {
       name: "resend._domainkey",
       value: `resend._domainkey.${domain}.resend-dns.com`,
       purpose:
-        "DKIM — Cryptographic signature so recipients can verify emails haven't been tampered with. Use the exact host and value Resend shows for your domain.",
+        "DKIM — Cryptographic signature so recipients can verify messages. Copy the exact host and value your provider shows.",
     },
     {
       id: "dmarc",
@@ -1217,7 +1228,7 @@ function DomainStepsList({
                   rel="noopener noreferrer"
                   className="mt-2 inline-flex items-center gap-1 text-xs text-jarvis-blue hover:underline"
                 >
-                  Open Resend Domains <ExternalLink className="h-3 w-3" />
+                  Open provider domains <ExternalLink className="h-3 w-3" />
                 </a>
               )}
 

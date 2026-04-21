@@ -11,6 +11,7 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils";
+import { PRODUCT_TAGLINE } from "@/lib/product-copy";
 
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-white/10 text-jarvis-muted",
@@ -47,36 +48,43 @@ export default async function LeadsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Leads</h1>
+          <p className="text-xs font-medium uppercase tracking-wider text-jarvis-blue/80">{PRODUCT_TAGLINE}</p>
+          <h1 className="mt-0.5 text-2xl font-bold text-white">Leads</h1>
           <p className="mt-1 text-sm text-jarvis-muted">
             {leads?.length
-              ? `${leads.length} lead${leads.length > 1 ? "s" : ""} across all campaigns`
-              : "No leads yet. Import a CSV to get started."}
+              ? `${leads.length} contact${leads.length > 1 ? "s" : ""} across campaigns`
+              : "Import or discover people to email — Jarvis handles the drafts."}
           </p>
         </div>
-        <Link href="/dashboard/leads/import" className="jarvis-btn-primary">
-          <Upload className="h-4 w-4" />
-          Import CSV
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/dashboard/leads/import" className="jarvis-btn-primary">
+            <Upload className="h-4 w-4" />
+            Import
+          </Link>
+          <Link href="/dashboard/leads/discover" className="jarvis-btn-ghost">
+            <Search className="h-4 w-4" />
+            Discover
+          </Link>
+        </div>
       </div>
 
       {!leads?.length ? (
         <div className="jarvis-card flex flex-col items-center justify-center py-16 text-center">
           <Users className="mb-4 h-10 w-10 text-jarvis-blue/30" />
-          <h3 className="text-lg font-semibold text-white">
-            No leads in the pipeline
-          </h3>
+          <h3 className="text-lg font-semibold text-white">No leads yet</h3>
           <p className="mt-2 max-w-md text-sm text-jarvis-muted">
-            Import a CSV with prospect data — name, email, company, title,
-            LinkedIn URL — and Jarvis will handle the rest.
+            Paste emails, upload a CSV, or describe your ICP and discover people. Then run the pipeline to get drafts.
           </p>
-          <Link
-            href="/dashboard/leads/import"
-            className="jarvis-btn-primary mt-6"
-          >
-            <Upload className="h-4 w-4" />
-            Import Leads
-          </Link>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <Link href="/dashboard/leads/import" className="jarvis-btn-primary">
+              <Upload className="h-4 w-4" />
+              Import leads
+            </Link>
+            <Link href="/dashboard/leads/discover" className="jarvis-btn-ghost">
+              <Search className="h-4 w-4" />
+              Discover
+            </Link>
+          </div>
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-jarvis-border">

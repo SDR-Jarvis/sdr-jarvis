@@ -139,18 +139,18 @@ export function ApprovalActions({
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-4">
       <button
         onClick={() => handleAction("approve")}
         disabled={loading !== null}
-        className="jarvis-btn-primary text-xs"
+        className="jarvis-btn-primary text-sm font-semibold px-4 py-2"
       >
         {loading === "approve" ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          <CheckCircle className="h-3 w-3" />
+          <CheckCircle className="h-4 w-4" />
         )}
-        Approve & Send
+        Approve &amp; send
       </button>
       <button
         onClick={() => {
@@ -159,22 +159,22 @@ export function ApprovalActions({
           setEditing(true);
         }}
         disabled={loading !== null}
-        className="jarvis-btn-ghost text-xs"
+        className="jarvis-btn-ghost text-sm px-3 py-2"
       >
-        <Pencil className="h-3 w-3" />
-        Edit
+        <Pencil className="h-4 w-4" />
+        Edit first
       </button>
       <button
         onClick={() => handleAction("reject")}
         disabled={loading !== null}
-        className="jarvis-btn-danger text-xs"
+        className="jarvis-btn-danger text-sm px-3 py-2"
       >
         {loading === "reject" ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          <XCircle className="h-3 w-3" />
+          <XCircle className="h-4 w-4" />
         )}
-        Reject
+        Skip
       </button>
     </div>
   );

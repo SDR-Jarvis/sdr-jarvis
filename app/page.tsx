@@ -29,6 +29,7 @@ import {
 } from "@/lib/auth/password-policy";
 import { getFriendlyAuthError } from "@/lib/auth/error-messages";
 import { signInWithOAuth, type OAuthProvider } from "@/lib/auth/oauth";
+import { PRODUCT_SUBLINE, PRODUCT_TAGLINE } from "@/lib/product-copy";
 
 type AuthStep = "email" | "password";
 /** `signin` = existing user only. `signup` = new account only (no auto sign-up after failed login). */
@@ -64,7 +65,10 @@ export default function LandingPage() {
     const p = new URLSearchParams(window.location.search);
     const err = p.get("error");
     if (err === "auth_failed" || err === "oauth_failed") {
-      setError("Something went wrong signing you in. Please try again.");
+      setError(
+        "We could not finish sign-in. Try again. If it keeps failing, add this exact URL to allowed redirect URLs in your auth project settings: " +
+          `${window.location.origin}/auth/callback`
+      );
       const path = window.location.pathname + window.location.hash;
       window.history.replaceState({}, "", path);
     }
@@ -254,21 +258,19 @@ export default function LandingPage() {
 
       {/* ═══════════ HERO ═══════════ */}
       <section className="relative z-10 mx-auto max-w-5xl px-6 pb-24 pt-20 text-center">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-jarvis-blue/90">
+          {PRODUCT_TAGLINE}
+        </p>
         <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl leading-[1.12]">
-          AI-powered outbound
+          Outbound that respects
           <br />
-          <span className="text-white">for solo founders.</span>
-          <span className="mt-3 block text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
-            <span className="bg-gradient-to-r from-jarvis-blue to-jarvis-cyan bg-clip-text text-transparent">
-              Your first sales hire — minus the salary.
-            </span>
+          <span className="bg-gradient-to-r from-jarvis-blue to-jarvis-cyan bg-clip-text text-transparent">
+            your time and your brand
           </span>
         </h1>
 
         <p className="mx-auto mt-6 max-w-2xl text-lg text-jarvis-muted leading-relaxed">
-          The SDR for founders who hate doing sales: Jarvis researches each prospect,
-          writes a real first draft, and waits for your approval before anything sends.
-          No spam blasts. No pretending you hired a team.
+          {PRODUCT_SUBLINE} Built for solo founders — no spam blasts, no fake &ldquo;team.&rdquo;
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -297,7 +299,7 @@ export default function LandingPage() {
           <span className="hidden sm:block text-jarvis-border">|</span>
           <span className="flex items-center gap-1.5">
             <Brain className="h-3.5 w-3.5 text-jarvis-blue/60" />
-            Powered by OpenAI
+            Learns your tone over time
           </span>
           <span className="hidden sm:block text-jarvis-border">|</span>
           <span className="flex items-center gap-1.5">
@@ -485,11 +487,13 @@ export default function LandingPage() {
       <section id="get-started" className="relative z-10 mx-auto max-w-lg px-6 py-24">
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-white sm:text-3xl">
-            Ready to automate your outbound?
+            Start outbound in minutes
           </h2>
-          <p className="mt-3 text-jarvis-muted">
-            Free to start. No credit card required. Set up in 5 minutes.
+          <p className="mx-auto mt-3 max-w-md text-sm text-jarvis-muted leading-relaxed">
+            The fastest way for a founder to start outbound. AI researches leads, writes personalized emails, and
+            lets you approve before sending.
           </p>
+          <p className="mt-2 text-xs text-jarvis-muted/70">Free to start. No credit card.</p>
         </div>
 
         <div className="jarvis-card jarvis-glow space-y-6">
@@ -499,15 +503,30 @@ export default function LandingPage() {
             </h3>
             <p className="mt-1 text-sm text-jarvis-muted">
               {step === "email"
-                ? "Enter your email to get started — or sign in to your existing account."
+                ? "Continue with Google or email — same account, your choice."
                 : accountMode === "signin"
-                  ? "Sign in with the password you already use for this email."
-                  : "Create a password for a new account (use the checklist below)."}
+                  ? "Sign in with the password you use for this email."
+                  : "Create a strong password for your new account."}
             </p>
           </div>
 
-          {(githubOAuthEnabled || linkedinOAuthEnabled) && (
+          {(googleOAuthEnabled || githubOAuthEnabled || linkedinOAuthEnabled) && (
             <div className="space-y-2">
+              {googleOAuthEnabled && (
+                <button
+                  type="button"
+                  onClick={() => void handleOAuth("google")}
+                  disabled={!!oauthLoading}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-900 bg-white px-4 py-3 text-sm font-bold text-neutral-900 transition-all hover:brightness-95 active:scale-[0.98] disabled:opacity-50"
+                >
+                  {oauthLoading === "google" ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-neutral-900" />
+                  ) : (
+                    <GoogleIcon />
+                  )}
+                  Continue with Google
+                </button>
+              )}
               {githubOAuthEnabled && (
                 <button
                   type="button"
@@ -538,42 +557,15 @@ export default function LandingPage() {
                   Continue with LinkedIn
                 </button>
               )}
-              {!googleOAuthEnabled && (
-                <div className="relative py-2 text-center">
-                  <span className="relative z-10 bg-jarvis-surface px-3 text-xs text-jarvis-muted">
-                    or
-                  </span>
-                  <div className="absolute left-0 right-0 top-1/2 z-0 h-px bg-jarvis-border" />
-                </div>
-              )}
+              <div className="relative py-2 text-center">
+                <span className="relative z-10 bg-jarvis-surface px-3 text-xs text-jarvis-muted">or</span>
+                <div className="absolute left-0 right-0 top-1/2 z-0 h-px bg-jarvis-border" />
+              </div>
             </div>
           )}
 
           {step === "email" ? (
             <form onSubmit={handleEmailContinue} className="space-y-4">
-              {googleOAuthEnabled && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void handleOAuth("google")}
-                    disabled={!!oauthLoading}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-900 bg-white px-4 py-3 text-sm font-bold text-neutral-900 transition-all hover:brightness-95 active:scale-[0.98] disabled:opacity-50"
-                  >
-                    {oauthLoading === "google" ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-neutral-900" />
-                    ) : (
-                      <GoogleIcon />
-                    )}
-                    Continue with Google
-                  </button>
-                  <div className="relative py-2 text-center">
-                    <span className="relative z-10 bg-jarvis-surface px-3 text-xs text-jarvis-muted">
-                      or
-                    </span>
-                    <div className="absolute left-0 right-0 top-1/2 z-0 h-px bg-jarvis-border" />
-                  </div>
-                </>
-              )}
               <div>
                 <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-jarvis-muted">
                   Email address

@@ -337,6 +337,7 @@ export async function findLeads(
   leads: RawLead[];
   fromCache: boolean;
   sourceStats: Record<string, number>;
+  sourceWarnings?: string[];
   rateLimitError?: { nextAvailableAt: Date };
 }> {
   const rateLimit = await checkRateLimit(supabase, userId);
@@ -377,6 +378,18 @@ export async function findLeads(
   const flatten = (r: PromiseSettledResult<RawLead[]>) =>
     r.status === "fulfilled" ? r.value : [];
 
+  const sourceFriendly: Record<"github" | "hn" | "producthunt" | "apollo", string> = {
+    github: "GitHub",
+    hn: "Hacker News",
+    producthunt: "Product Hunt",
+    apollo: "People search",
+  };
+  const sourceWarnings: string[] = [];
+  const settled = [githubResult, hnResult, phResult, apolloResult] as const;
+  (["github", "hn", "producthunt", "apollo"] as const).forEach((key, i) => {
+    if (settled[i].status === "rejected") sourceWarnings.push(sourceFriendly[key]);
+  });
+
   const g = flatten(githubResult);
   const h = flatten(hnResult);
   const p = flatten(phResult);
@@ -401,5 +414,10 @@ export async function findLeads(
   const capped = deduped.slice(0, 25);
   await setCachedLeads(supabase, userId, icpHash, icpDescription, capped, sourceStats);
 
-  return { leads: capped, fromCache: false, sourceStats };
+  return {
+    leads: capped,
+    fromCache: false,
+    sourceStats,
+    sourceWarnings: sourceWarnings.length ? sourceWarnings : undefined,
+  };
 }

@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }
+
+    console.error("[auth/callback] exchangeCodeForSession:", error.message);
   }
 
   return NextResponse.redirect(`${origin}/?error=oauth_failed`);

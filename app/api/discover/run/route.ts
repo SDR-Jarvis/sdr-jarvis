@@ -50,5 +50,6 @@ export async function POST(req: NextRequest) {
     leads: scored,
     fromCache: result.fromCache,
     sourceStats: result.sourceStats,
+    sourceWarnings: result.sourceWarnings,
   });
 }
