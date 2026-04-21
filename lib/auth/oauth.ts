@@ -1,26 +1,30 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { getFriendlyAuthError } from "@/lib/auth/error-messages";
 
 export type OAuthProvider = "google" | "github" | "linkedin_oidc";
 
-function redirectUrl(): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
-  if (typeof window !== "undefined" && !base) {
-    return `${window.location.origin}/auth/callback`;
-  }
-  return `${base || (typeof window !== "undefined" ? window.location.origin : "")}/auth/callback`;
+export async function signInWithGoogle() {
+  const supabase = createClientComponentClient();
+  await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    },
+  });
 }
 
 export async function signInWithOAuth(provider: OAuthProvider): Promise<void> {
-  const supabase = createClient();
+  if (provider === "google") {
+    return signInWithGoogle();
+  }
+  const supabase = createClientComponentClient();
   const { error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: redirectUrl(),
-      scopes:
-        provider === "linkedin_oidc" ? "openid profile email" : undefined,
+      redirectTo: `${window.location.origin}/auth/callback`,
+      scopes: provider === "linkedin_oidc" ? "openid profile email" : undefined,
     },
   });
   if (error) {

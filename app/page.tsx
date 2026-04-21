@@ -506,23 +506,8 @@ export default function LandingPage() {
             </p>
           </div>
 
-          {(googleOAuthEnabled || githubOAuthEnabled || linkedinOAuthEnabled) && (
+          {(githubOAuthEnabled || linkedinOAuthEnabled) && (
             <div className="space-y-2">
-              {googleOAuthEnabled && (
-                <button
-                  type="button"
-                  onClick={() => void handleOAuth("google")}
-                  disabled={!!oauthLoading}
-                  className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-jarvis-border bg-transparent px-4 text-sm font-medium text-white transition-colors hover:bg-white/5 disabled:opacity-50"
-                >
-                  {oauthLoading === "google" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <GoogleIcon />
-                  )}
-                  Continue with Google
-                </button>
-              )}
               {githubOAuthEnabled && (
                 <button
                   type="button"
@@ -553,17 +538,42 @@ export default function LandingPage() {
                   Continue with LinkedIn
                 </button>
               )}
-              <div className="relative py-2 text-center">
-                <span className="relative z-10 bg-jarvis-surface px-3 text-xs text-jarvis-muted">
-                  or
-                </span>
-                <div className="absolute left-0 right-0 top-1/2 z-0 h-px bg-jarvis-border" />
-              </div>
+              {!googleOAuthEnabled && (
+                <div className="relative py-2 text-center">
+                  <span className="relative z-10 bg-jarvis-surface px-3 text-xs text-jarvis-muted">
+                    or
+                  </span>
+                  <div className="absolute left-0 right-0 top-1/2 z-0 h-px bg-jarvis-border" />
+                </div>
+              )}
             </div>
           )}
 
           {step === "email" ? (
             <form onSubmit={handleEmailContinue} className="space-y-4">
+              {googleOAuthEnabled && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleOAuth("google")}
+                    disabled={!!oauthLoading}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-900 bg-white px-4 py-3 text-sm font-bold text-neutral-900 transition-all hover:brightness-95 active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {oauthLoading === "google" ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-neutral-900" />
+                    ) : (
+                      <GoogleIcon />
+                    )}
+                    Continue with Google
+                  </button>
+                  <div className="relative py-2 text-center">
+                    <span className="relative z-10 bg-jarvis-surface px-3 text-xs text-jarvis-muted">
+                      or
+                    </span>
+                    <div className="absolute left-0 right-0 top-1/2 z-0 h-px bg-jarvis-border" />
+                  </div>
+                </>
+              )}
               <div>
                 <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-jarvis-muted">
                   Email address
