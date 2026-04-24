@@ -281,52 +281,43 @@ async function discoverProductHunt(signals: ICPSignals): Promise<RawLead[]> {
 }
 
 async function discoverApollo(
-  signals: ICPSignals,
+  _signals: ICPSignals,
   apiKey: string
 ): Promise<RawLead[]> {
-  const sizeMap: Record<string, string[]> = {
-    solo: ["1,1"],
-    small: ["1,10"],
-    any: ["1,200"],
+  // Apollo People Search uses AND across filters — keep this body minimal for volume.
+  const body = {
+    api_key: apiKey,
+    person_titles: ["founder", "co-founder", "ceo", "cto"],
+    q_organization_keyword_tags: ["saas", "software"],
+    organization_num_employees_ranges: ["1,50"],
+    per_page: 25,
   };
 
-  // Apollo (2024+): People API Search — master key in `X-Api-Key` header only;
-  // POST /api/v1/mixed_people/api_search with filters as query params.
-  const ranges = sizeMap[signals.company_size] ?? ["1,50"];
-  const params = new URLSearchParams();
-  for (const t of signals.roles.slice(0, 5)) {
-    const v = t.trim();
-    if (v) params.append("person_titles[]", v);
-  }
-  for (const r of ranges) {
-    params.append("organization_num_employees_ranges[]", r);
-  }
-  const keywordBits = [
-    ...signals.industries.slice(0, 3),
-    ...signals.keywords.slice(0, 4),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  if (keywordBits) params.set("q_keywords", keywordBits.slice(0, 200));
-  params.set("per_page", "15");
-  params.set("page", "1");
-
-  const url = `https://api.apollo.io/api/v1/mixed_people/api_search?${params.toString()}`;
-
-  const response = await fetch(url, {
+  const response = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Api-Key": apiKey,
     },
-    body: "{}",
+    body: JSON.stringify(body),
   });
-  if (!response.ok) return [];
 
   const data = (await response.json()) as {
     people?: Record<string, unknown>[];
+    pagination?: { total_entries?: number };
   };
+
+  console.log("[Apollo] Request sent:", JSON.stringify(body));
+  console.log("[Apollo] Results returned:", data.people?.length ?? 0);
+  console.log(
+    "[Apollo] Total available:",
+    data.pagination?.total_entries ?? "unknown"
+  );
+
+  if (!response.ok) {
+    console.error("[Apollo] API error:", response.status, data);
+    return [];
+  }
 
   return (data.people ?? []).map((p) => {
     const org = p.organization as Record<string, unknown> | undefined;

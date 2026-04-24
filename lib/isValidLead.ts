@@ -6,9 +6,9 @@ export function getMinLeadScore(): number {
     typeof process !== "undefined"
       ? (process.env.MIN_LEAD_SCORE ?? process.env.NEXT_PUBLIC_MIN_LEAD_SCORE)
       : undefined;
-  if (raw === undefined || raw === "") return 20;
+  if (raw === undefined || raw === "") return 10;
   const n = parseInt(String(raw), 10);
-  if (!Number.isFinite(n)) return 20;
+  if (!Number.isFinite(n)) return 10;
   return Math.max(0, Math.min(100, n));
 }
 
