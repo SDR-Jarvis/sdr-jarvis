@@ -29,6 +29,17 @@ const ROLE_KEYWORDS = [
   "vp of",
   "director of",
   "lead",
+  "ai founder",
+  "saas founder",
+  "technical founder",
+  "indie saas",
+  "micro saas",
+  "b2b saas",
+  "ai startup",
+  "ml founder",
+  "llm founder",
+  "developer tools founder",
+  "devtools founder",
 ];
 
 const INDUSTRY_KEYWORDS = [
@@ -56,6 +67,19 @@ const INDUSTRY_KEYWORDS = [
   "ml",
   "machine learning",
   "data",
+  "artificial intelligence",
+  "llm",
+  "generative ai",
+  "ai-powered",
+  "ai native",
+  "vertical saas",
+  "b2b saas",
+  "api-first",
+  "data infrastructure",
+  "mlops",
+  "ai infrastructure",
+  "foundation model",
+  "workflow automation",
 ];
 
 const STAGE_SIGNALS = [

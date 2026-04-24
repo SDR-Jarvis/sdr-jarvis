@@ -50,6 +50,32 @@ export function scoreLead(lead: RawLead, signals: ICPSignals): ScoredLead {
   score += keywordMatches.length * 8;
   matches.push(...keywordMatches);
 
+  const aiSignals = [
+    "ai",
+    "llm",
+    "ml",
+    "gpt",
+    "artificial intelligence",
+    "machine learning",
+    "generative",
+  ];
+  const saasSignals = [
+    "saas",
+    "b2b",
+    "api",
+    "dashboard",
+    "platform",
+    "subscription",
+    "devtools",
+  ];
+  const hasAISignal = aiSignals.some((s) => searchText.includes(s));
+  const hasSaaSSignal = saasSignals.some((s) => searchText.includes(s));
+  if (hasAISignal) score += 15;
+  if (hasSaaSSignal) score += 10;
+  if (hasAISignal && hasSaaSSignal) {
+    score += 10;
+  }
+
   if (lead.email) {
     score += 25;
     matches.push("has email");

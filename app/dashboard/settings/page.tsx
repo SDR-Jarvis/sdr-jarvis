@@ -75,6 +75,7 @@ function SettingsContent() {
   const [sendingMode, setSendingMode] = useState<"shared" | "custom">("shared");
   const [sendingModeSaving, setSendingModeSaving] = useState(false);
   const [apolloApiKey, setApolloApiKey] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [loginEmail, setLoginEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -121,10 +122,14 @@ function SettingsContent() {
         } else {
           setSendingMode("shared");
         }
-        if (typeof ext.apollo_api_key === "string") {
-          setApolloApiKey(ext.apollo_api_key);
-        } else {
-          setApolloApiKey("");
+        const admin = ext.is_admin === true;
+        setIsAdmin(admin);
+        if (admin) {
+          if (typeof ext.apollo_api_key === "string") {
+            setApolloApiKey(ext.apollo_api_key);
+          } else {
+            setApolloApiKey("");
+          }
         }
       }
       setLoading(false);
@@ -141,20 +146,21 @@ function SettingsContent() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase
-      .from("profiles")
-      .update({
-        full_name: fullName || null,
-        company_name: companyName || null,
-        role: role || null,
-        icp_description: icpDescription || null,
-        timezone,
-        tone_preferences: { formality, humor, signoff },
-        onboarded: true,
-        sending_mode: sendingMode,
-        apollo_api_key: apolloApiKey.trim() || null,
-      })
-      .eq("id", user.id);
+    const profileUpdate: Record<string, unknown> = {
+      full_name: fullName || null,
+      company_name: companyName || null,
+      role: role || null,
+      icp_description: icpDescription || null,
+      timezone,
+      tone_preferences: { formality, humor, signoff },
+      onboarded: true,
+      sending_mode: sendingMode,
+    };
+    if (isAdmin) {
+      profileUpdate.apollo_api_key = apolloApiKey.trim() || null;
+    }
+
+    await supabase.from("profiles").update(profileUpdate).eq("id", user.id);
 
     setSaving(false);
     setSaved(true);
@@ -560,43 +566,53 @@ function SettingsContent() {
               <Plug className="h-4 w-4" />
               Integrations
             </h2>
-            <p className="text-sm text-jarvis-muted leading-relaxed">
-              Apollo-powered discovery uses the Apollo key configured on the server for the whole app (your hosting
-              provider’s environment). This field is reserved for a future per-account option and is not used by
-              Discover today. You can leave it blank.
-            </p>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">Apollo (optional)</label>
-              <input
-                type="password"
-                value={apolloApiKey}
-                onChange={(e) => setApolloApiKey(e.target.value)}
-                placeholder="Paste key — stored on your account only"
-                autoComplete="off"
-                className="jarvis-input font-mono text-sm"
-              />
-              <p className="mt-1 text-xs text-jarvis-muted/50">
-                Only used for discovery and sync features you trigger. You can clear this field anytime.
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-3 border-t border-white/10 pt-4">
-              {saved && (
-                <span className="text-sm text-jarvis-success">Settings saved.</span>
-              )}
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="jarvis-btn-primary"
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {saving ? "Saving…" : "Save"}
-              </button>
-            </div>
+            {isAdmin ? (
+              <>
+                <p className="text-sm text-jarvis-muted leading-relaxed">
+                  Apollo-powered discovery uses the Apollo key configured on the server for the whole app (your hosting
+                  provider’s environment). This field is reserved for a future per-account option and is not used by
+                  Discover today. You can leave it blank.
+                </p>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">Apollo (optional)</label>
+                  <input
+                    type="password"
+                    value={apolloApiKey}
+                    onChange={(e) => setApolloApiKey(e.target.value)}
+                    placeholder="Paste key — stored on your account only"
+                    autoComplete="off"
+                    className="jarvis-input font-mono text-sm"
+                  />
+                  <p className="mt-1 text-xs text-jarvis-muted/50">
+                    Only used for discovery and sync features you trigger. You can clear this field anytime.
+                  </p>
+                </div>
+                <div className="flex items-center justify-end gap-3 border-t border-white/10 pt-4">
+                  {saved && (
+                    <span className="text-sm text-jarvis-success">Settings saved.</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="jarvis-btn-primary"
+                  >
+                    {saving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-3 text-sm leading-relaxed text-jarvis-muted">
+                <p>Lead discovery is powered by Jarvis.</p>
+                <p>No setup needed — we handle it for you.</p>
+                <p className="text-jarvis-muted/80">Coming soon: connect your own tools.</p>
+              </div>
+            )}
           </div>
         </div>
       )}

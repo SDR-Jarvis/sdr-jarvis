@@ -6,6 +6,10 @@ import { findLeads } from "@/lib/discover/engine";
 import { scoreAndSortLeads, type ScoredLead } from "@/lib/icp/scorer";
 import { isValidLead } from "@/lib/isValidLead";
 
+if (!process.env.APOLLO_API_KEY) {
+  console.warn("Apollo API key missing — discovery may be limited.");
+}
+
 export const runtime = "nodejs";
 
 /**
@@ -31,6 +35,12 @@ export async function POST(req: NextRequest) {
   if (!icpDescription) {
     return NextResponse.json({ error: "icpDescription required" }, { status: 400 });
   }
+
+  console.log("Discovery sources active:", {
+    github: true,
+    productHunt: true,
+    apollo: !!process.env.APOLLO_API_KEY,
+  });
 
   const signals = await parseICP(icpDescription, extractICPWithLLM);
   const result = await findLeads(supabase, user.id, signals, icpDescription, {

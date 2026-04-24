@@ -47,17 +47,25 @@ const LOADING_STEPS = [
   "Curating the best results…",
 ];
 
+const ICP_PLACEHOLDERS = [
+  "e.g. B2B SaaS founders who recently launched",
+  "e.g. solo founders building AI tools",
+  "e.g. seed-stage AI startup founders",
+  "e.g. technical founders building API-first products",
+] as const;
+
 const EXAMPLE_ICPS = [
-  "SaaS founders building developer tools",
-  "Bootstrapped SaaS founders who launched recently",
-  "Solo developers building developer tools",
-  "Seed-stage CTOs at fintech startups",
+  "B2B SaaS founders who recently launched",
+  "Solo founders building AI tools",
+  "Seed-stage AI startup founders",
+  "Technical founders building API-first products",
 ] as const;
 
 export default function DiscoverLeadsPage() {
   const supabase = createClient();
 
   const [icpDescription, setIcpDescription] = useState("");
+  const [icpPlaceholderIndex, setIcpPlaceholderIndex] = useState(0);
   const [leads, setLeads] = useState<IcpDiscoveredLead[]>([]);
   const [emailOverrides, setEmailOverrides] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
@@ -78,6 +86,14 @@ export default function DiscoverLeadsPage() {
     filterRelaxed?: boolean;
   } | null>(null);
   const loadingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (icpDescription !== "") return;
+    const id = setInterval(() => {
+      setIcpPlaceholderIndex((i) => (i + 1) % ICP_PLACEHOLDERS.length);
+    }, 3500);
+    return () => clearInterval(id);
+  }, [icpDescription]);
 
   useEffect(() => {
     async function loadCampaigns() {
@@ -364,9 +380,12 @@ export default function DiscoverLeadsPage() {
           value={icpDescription}
           onChange={(e) => setIcpDescription(e.target.value)}
           rows={3}
-          placeholder="e.g. bootstrapped SaaS founders who launched recently"
+          placeholder={ICP_PLACEHOLDERS[icpPlaceholderIndex]}
           className="jarvis-input resize-none text-[15px] leading-relaxed"
         />
+        <p className="text-xs leading-relaxed text-jarvis-muted/90">
+          Describe the SaaS or AI founder you want to reach. Be specific — better description = better leads.
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"

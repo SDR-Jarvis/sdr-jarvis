@@ -297,10 +297,9 @@ export default function LandingPage() {
               href={calendlyUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-12 items-center justify-center gap-2 rounded-lg border border-jarvis-border px-6 text-sm font-medium text-white transition-all hover:border-jarvis-blue/40 hover:bg-white/[0.03]"
+              className="outlined-button"
             >
               Book a demo
-              <ArrowRight className="h-4 w-4" />
             </a>
           ) : null}
           <a
@@ -816,16 +815,15 @@ export default function LandingPage() {
               Want to see it work on your pipeline?
             </h2>
             <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-jarvis-muted">
-              I&apos;ll personally walk you through a live demo with your actual ICP. Usually 20 minutes.
+              I&apos;ll personally walk you through a live demo using your actual ICP and targets. Usually 20 minutes.
             </p>
             <a
               href={calendlyUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-jarvis-blue px-6 text-sm font-bold text-jarvis-dark transition-all hover:brightness-110"
+              className="mt-6 inline-flex h-12 items-center justify-center rounded-lg bg-jarvis-blue px-6 text-sm font-bold text-jarvis-dark transition-all hover:brightness-110"
             >
-              Book a demo call
-              <ArrowRight className="h-4 w-4" />
+              Book a demo call →
             </a>
           </div>
         </section>
