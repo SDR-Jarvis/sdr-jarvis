@@ -23,6 +23,14 @@ export interface ResearchData {
   techStack: string[];
   fundingInfo: string | null;
   score: number; // 0-100
+  /** Signal-first research (researcher v2) — optional for backwards compatibility */
+  opener_signal?: string;
+  opener_type?: string;
+  signal_source?: string;
+  company_differentiation?: string;
+  likely_pain_point?: string;
+  confidence?: "high" | "medium" | "low";
+  fallback_used?: boolean;
 }
 
 export interface DraftMessage {
@@ -121,6 +129,12 @@ export const JarvisState = Annotation.Root({
   senderDisplayName: Annotation<string>({
     reducer: (_, y) => y ?? "",
     default: () => "",
+  }),
+
+  /** Closing word from profile tone_preferences.signoff (e.g. Best, Thanks). */
+  senderSignoff: Annotation<string>({
+    reducer: (_, y) => y ?? "",
+    default: () => "Best",
   }),
 });
 

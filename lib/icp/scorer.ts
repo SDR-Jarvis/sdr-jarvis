@@ -21,7 +21,7 @@ export function scoreLead(lead: RawLead, signals: ICPSignals): ScoredLead {
   let score = 0;
   const matches: string[] = [];
 
-  const searchText = [lead.bio, lead.title, lead.company, lead.name]
+  const searchText = [lead.bio, lead.title, lead.company, lead.name, lead.username]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();

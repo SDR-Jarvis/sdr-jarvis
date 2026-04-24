@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils";
 import { PRODUCT_TAGLINE } from "@/lib/product-copy";
+import { displayLeadCompany, displayLeadFullName } from "@/lib/lead-display";
 
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-white/10 text-jarvis-muted",
@@ -117,6 +118,11 @@ export default async function LeadsPage() {
             <tbody className="divide-y divide-jarvis-border">
               {leads.map((lead) => {
                 const campaign = lead.campaigns as unknown as { name: string } | null;
+                const displayName = displayLeadFullName(lead);
+                const initials =
+                  `${(lead.first_name ?? "").charAt(0) || "?"}${(lead.last_name ?? "").charAt(0) || ""}`.trim() ||
+                  displayName.charAt(0) ||
+                  "?";
                 return (
                   <tr
                     key={lead.id}
@@ -125,12 +131,11 @@ export default async function LeadsPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-jarvis-surface text-xs font-bold text-jarvis-blue">
-                          {lead.first_name[0]}
-                          {lead.last_name[0]}
+                          {initials.slice(0, 2)}
                         </div>
                         <div>
                           <p className="font-medium text-white">
-                            {lead.first_name} {lead.last_name}
+                            {displayName}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
                             {lead.email && (
@@ -146,7 +151,7 @@ export default async function LeadsPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 text-jarvis-muted">
                         <Building2 className="h-3.5 w-3.5" />
-                        {lead.company ?? "—"}
+                        {displayLeadCompany(lead.company)}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-jarvis-muted">

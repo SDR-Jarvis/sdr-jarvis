@@ -561,8 +561,9 @@ function SettingsContent() {
               Integrations
             </h2>
             <p className="text-sm text-jarvis-muted leading-relaxed">
-              Already using Apollo? Paste your connection key from Apollo → Settings → Integrations → API so optional
-              discovery can pull extra matches. Leave blank if you don&apos;t use it.
+              Apollo-powered discovery uses the Apollo key configured on the server for the whole app (your hosting
+              provider’s environment). This field is reserved for a future per-account option and is not used by
+              Discover today. You can leave it blank.
             </p>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">Apollo (optional)</label>

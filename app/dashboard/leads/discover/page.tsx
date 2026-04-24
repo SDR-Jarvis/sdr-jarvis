@@ -18,11 +18,15 @@ import {
   discoverySourceLabel,
   fitLabel,
 } from "@/lib/product-copy";
+import { isValidLead } from "@/lib/isValidLead";
+import { displayLeadCompany } from "@/lib/lead-display";
+import type { ScoredLead } from "@/lib/icp/scorer";
 
 type IcpLabel = "hot" | "maybe" | "weak";
 
 interface IcpDiscoveredLead {
   name: string | null;
+  username?: string | null;
   email: string | null;
   title: string | null;
   company: string | null;
@@ -32,6 +36,7 @@ interface IcpDiscoveredLead {
   icp_label: IcpLabel;
   icp_match_reason: string;
   icp_score?: number;
+  raw_score?: number;
 }
 
 const LOADING_STEPS = [
@@ -43,10 +48,11 @@ const LOADING_STEPS = [
 ];
 
 const EXAMPLE_ICPS = [
+  "SaaS founders building developer tools",
   "Bootstrapped SaaS founders who launched recently",
   "Solo developers building developer tools",
   "Seed-stage CTOs at fintech startups",
-];
+] as const;
 
 export default function DiscoverLeadsPage() {
   const supabase = createClient();
@@ -65,6 +71,12 @@ export default function DiscoverLeadsPage() {
   const [campaignId, setCampaignId] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
+  const [discoveryMeta, setDiscoveryMeta] = useState<{
+    totalFound: number;
+    totalFiltered: number;
+    returned: number;
+    filterRelaxed?: boolean;
+  } | null>(null);
   const loadingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -115,6 +127,7 @@ export default function DiscoverLeadsPage() {
       setSelected(new Set());
       setRateLimitUntil(null);
       setFromCache(false);
+      setDiscoveryMeta(null);
 
       try {
         const res = await fetch("/api/discover/run", {
@@ -141,6 +154,12 @@ export default function DiscoverLeadsPage() {
           leads?: IcpDiscoveredLead[];
           fromCache?: boolean;
           sourceWarnings?: string[];
+          discovery?: {
+            totalFound: number;
+            totalFiltered: number;
+            returned: number;
+            filterRelaxed?: boolean;
+          };
         };
         const list = (data.leads ?? []) as IcpDiscoveredLead[];
         setLeads(list);
@@ -148,6 +167,11 @@ export default function DiscoverLeadsPage() {
         setSourceWarnings(
           data.sourceWarnings?.length ? data.sourceWarnings : null
         );
+        setDiscoveryMeta(data.discovery ?? null);
+        if (data.discovery && typeof window !== "undefined") {
+          // eslint-disable-next-line no-console -- mirrors server summary for local tuning
+          console.log("Discovery Summary (client):", data.discovery);
+        }
         const emails: Record<number, string> = {};
         list.forEach((l, i) => {
           emails[i] = l.email?.trim() ?? "";
@@ -210,19 +234,59 @@ export default function DiscoverLeadsPage() {
       return;
     }
 
-    const rows = withEmail.map((i) => {
+    const totalFound = withEmail.length;
+    let totalFiltered = 0;
+    const rows: Record<string, unknown>[] = [];
+
+    for (const i of withEmail) {
       const lead = leads[i];
-      const raw = (lead.name || "Contact").trim();
-      const parts = raw.split(/\s+/);
+      const url = lead.url?.startsWith("http") ? lead.url : null;
+      const companyNorm =
+        (lead.company ?? "").trim() ||
+        (url?.includes("github.com") ? "Independent Founder" : "");
+      const scored: ScoredLead = {
+        name: lead.name ?? lead.username ?? null,
+        username: lead.username ?? null,
+        email: emailAt(i),
+        title: lead.title,
+        company: companyNorm || null,
+        bio: lead.bio,
+        url,
+        source: lead.source as ScoredLead["source"],
+        raw_score: lead.raw_score ?? 0,
+        icp_label: lead.icp_label,
+        icp_match_reason: lead.icp_match_reason,
+        icp_score: lead.icp_score ?? 0,
+      };
+
+      if (!isValidLead(scored)) {
+        totalFiltered += 1;
+        // eslint-disable-next-line no-console -- import-side filter diagnostics
+        console.log("Filtered lead:", {
+          name: scored.name,
+          company: scored.company,
+          score: scored.icp_score,
+        });
+        continue;
+      }
+
+      const displayName =
+        (lead.name ?? "").trim() || (lead.username ?? "").trim() || "Contact";
+      const parts = displayName.split(/\s+/);
       const first = parts[0] || "Contact";
       const last = parts.slice(1).join(" ") || " ";
-      const url = lead.url?.startsWith("http") ? lead.url : null;
-      return {
+
+      const enrichment: Record<string, string> = {};
+      if (lead.source === "github" && lead.username?.trim()) {
+        enrichment.github_username = lead.username.trim();
+      }
+
+      rows.push({
         campaign_id: campaignId,
         user_id: user.id,
         first_name: first,
         last_name: last,
-        company: lead.company || null,
+        company: displayLeadCompany(lead.company),
         company_url: url,
         title: lead.title || null,
         email: emailAt(i),
@@ -232,8 +296,26 @@ export default function DiscoverLeadsPage() {
         icp_label: lead.icp_label,
         icp_score: lead.icp_score ?? null,
         icp_match_reason: lead.icp_match_reason || null,
-      };
+        enrichment_data: Object.keys(enrichment).length ? enrichment : {},
+      });
+    }
+
+    const totalSaved = rows.length;
+
+    // eslint-disable-next-line no-console -- import batch metrics
+    console.log("Discovery Summary:", {
+      found: totalFound,
+      filtered: totalFiltered,
+      saved: totalSaved,
     });
+
+    if (rows.length === 0) {
+      setImporting(false);
+      setImportResult(
+        "No leads passed validation to save. Try different rows or broaden your ICP."
+      );
+      return;
+    }
 
     const { data, error } = await supabase.from("leads").insert(rows).select("id");
     setImporting(false);
@@ -244,7 +326,11 @@ export default function DiscoverLeadsPage() {
     }
 
     const n = data?.length ?? 0;
-    setImportResult(`${n} lead${n === 1 ? "" : "s"} added to your campaign. Run the pipeline when you're ready.`);
+    let msg = `${n} lead${n === 1 ? "" : "s"} added to your campaign. Run the pipeline when you're ready.`;
+    if (n < 5) {
+      msg += `\n\nWe couldn't find strong matches yet.\nTry broadening your description.\n\nExample ICP: "SaaS founders building developer tools"`;
+    }
+    setImportResult(msg);
     setSelected(new Set());
   }
 
@@ -402,6 +488,20 @@ export default function DiscoverLeadsPage() {
             )}
           </div>
 
+          {discoveryMeta?.filterRelaxed ? (
+            <div className="rounded-md border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs text-amber-100/90">
+              Strict filters removed every candidate — showing a small fallback set so you still have people to
+              review. Try a broader ICP or add emails manually, then run again.
+            </div>
+          ) : null}
+
+          {!discoveryMeta?.filterRelaxed && leads.length > 0 && leads.length < 5 ? (
+            <div className="rounded-md border border-jarvis-border/60 bg-jarvis-dark/40 px-3 py-2 text-xs text-jarvis-muted">
+              We couldn&apos;t find strong matches yet. Try broadening your description. Example:{" "}
+              <span className="text-white/90">&quot;SaaS founders building developer tools&quot;</span>
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -443,8 +543,12 @@ export default function DiscoverLeadsPage() {
 
           {importResult && (
             <div
-              className={`rounded-md border px-4 py-3 text-sm ${
-                importResult.startsWith("Could") || importResult.startsWith("Select") || importResult.startsWith("Please")
+              className={`rounded-md border px-4 py-3 text-sm whitespace-pre-wrap ${
+                importResult.startsWith("Could") ||
+                importResult.startsWith("Select") ||
+                importResult.startsWith("Please") ||
+                importResult.startsWith("No leads passed") ||
+                importResult.includes("We couldn't find strong matches")
                   ? "border-amber-400/30 bg-amber-400/5 text-amber-100/90"
                   : "border-jarvis-success/30 bg-jarvis-success/5 text-jarvis-success"
               }`}
@@ -476,13 +580,11 @@ export default function DiscoverLeadsPage() {
                         </span>
                       </div>
                       <p className="text-sm font-semibold text-white">
-                        {lead.name || "Name unknown"}{" "}
-                        {lead.company && (
-                          <span className="font-normal text-jarvis-muted">
-                            · {lead.company}
-                            {lead.title && ` · ${lead.title}`}
-                          </span>
-                        )}
+                        {(lead.name ?? "").trim() || (lead.username ?? "").trim() || "Contact"}{" "}
+                        <span className="font-normal text-jarvis-muted">
+                          · {displayLeadCompany(lead.company)}
+                          {lead.title && ` · ${lead.title}`}
+                        </span>
                       </p>
                       {lead.bio && (
                         <p className="text-xs leading-relaxed text-jarvis-muted line-clamp-3">&ldquo;{lead.bio}&rdquo;</p>

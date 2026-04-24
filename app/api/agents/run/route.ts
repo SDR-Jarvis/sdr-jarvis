@@ -97,9 +97,16 @@ export async function POST(req: NextRequest) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("email_opt_out_footer, postal_address, full_name")
+    .select("email_opt_out_footer, postal_address, full_name, tone_preferences")
     .eq("id", user.id)
     .single();
+
+  const tonePrefs = (profile as { tone_preferences?: Record<string, unknown> } | null)
+    ?.tone_preferences;
+  const senderSignoff =
+    typeof tonePrefs?.signoff === "string" && tonePrefs.signoff.trim()
+      ? tonePrefs.signoff.trim()
+      : "Best";
 
   const senderDisplayName = resolveSenderName(
     (profile as { full_name?: string | null } | null)?.full_name
@@ -144,6 +151,7 @@ export async function POST(req: NextRequest) {
           dryRun: dryRun === true,
           complianceEmailSuffix,
           senderDisplayName,
+          senderSignoff,
         });
 
         for await (const event of graphStream) {

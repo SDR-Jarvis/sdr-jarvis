@@ -10,26 +10,106 @@ import {
 } from "@/lib/agents/tools";
 import type { JarvisStateType, ResearchData } from "../state";
 
-const RESEARCH_SYNTHESIS_PROMPT = `You are a B2B sales research analyst. Your job: turn raw, messy web data into a crisp prospect profile that a sales rep can actually use to write a personalized email.
+const RESEARCHER_SYSTEM_PROMPT = `
+You are researching a B2B SaaS founder or technical 
+decision-maker before a cold email is written to them.
 
-IMPORTANT RULES:
-- Be SPECIFIC. "They use React" is useful. "They have a modern tech stack" is garbage.
-- If the raw data is thin, say so. Do NOT invent details. "Unable to determine" is always acceptable.
-- Pain points should be INFERRED from real signals (hiring patterns, tech choices, company stage), not generic guesses like "probably wants to grow."
-- Talking points must reference something CONCRETE: a specific post, a product launch, a funding round, a job listing.
-- Score honestly. A lead with only a name and company and no other data is a 20, not a 50.
+Your job is NOT to summarize their LinkedIn bio.
+Their bio is already known. Do not repeat it.
 
-Return ONLY valid JSON (no markdown fences, no explanation):
+Your job is to find SPECIFIC RECENT SIGNALS that would
+make a cold email feel like it was written by someone
+who actually pays attention to what they are building.
+
+Research the person and their company and find ONE of
+these signals (in priority order):
+
+TIER 1 — USE IF FOUND (strongest openers):
+- Something they shipped or launched in the last 90 days
+  (GitHub release, Product Hunt launch, blog post about
+  a specific technical decision, changelog entry)
+- A specific technical problem they publicly discussed
+  (tweet, HN comment, conference talk, podcast quote)
+- A recent company milestone they announced
+  (funding, new customer type, pivot, team growth)
+
+TIER 2 — USE IF TIER 1 NOT FOUND:
+- A specific architectural or product decision visible
+  in their public work (GitHub, docs, open source repo)
+- A specific opinion they expressed about their market
+  or competitors
+- Their company's specific differentiation vs named
+  competitors (what makes them different from X)
+
+TIER 3 — LAST RESORT ONLY:
+- Their company's core focus and target customer
+  (only if nothing more specific is findable)
+
+OUTPUT FORMAT — return JSON only:
+
 {
-  "summary": "2-3 sentence overview. Who is this person, what do they do, why should we care.",
-  "companyInfo": "What the company does, rough size/stage, market position. Be specific.",
-  "recentActivity": "Any recent posts, job changes, product launches, company news. Say 'None found' if nothing.",
-  "painPoints": ["specific inferred pain point based on real signals"],
-  "talkingPoints": ["concrete personalization angle with source reference"],
-  "techStack": ["specific technologies mentioned or inferred"],
-  "fundingInfo": "Recent rounds with amounts if available, or null",
-  "score": 65
-}`;
+  "opener_signal": "The specific thing to reference in the opener. One sentence. Concrete. No adjectives like 'impressive' or 'interesting'.",
+  "opener_type": "launch | technical_decision | milestone | opinion | differentiation | general",
+  "signal_source": "Where you found this. URL or 'GitHub' or 'Twitter' or 'blog'",
+  "company_differentiation": "What makes their product different from alternatives in one sentence",
+  "likely_pain_point": "The specific operational or growth problem a founder at this stage likely has",
+  "confidence": "high | medium | low",
+  "fallback_used": false
+}
+
+If you cannot find anything specific (confidence: low),
+set fallback_used: true and use their company's core
+technical differentiation as the opener_signal.
+
+DO NOT make things up.
+DO NOT use generic phrases like "innovative approach"
+DO NOT summarize their bio back to them.
+`.trim();
+
+function mergeResearchOutput(
+  parsed: Record<string, unknown>,
+  lead: { firstName: string; lastName: string; company: string | null }
+): ResearchData {
+  const opener_signal = String(parsed.opener_signal ?? "").trim();
+  const opener_type = String(parsed.opener_type ?? "general").trim();
+  const signal_source = String(parsed.signal_source ?? "").trim();
+  const company_differentiation = String(parsed.company_differentiation ?? "").trim();
+  const likely_pain_point = String(parsed.likely_pain_point ?? "").trim();
+  const confRaw = String(parsed.confidence ?? "low").toLowerCase();
+  const confidence: "high" | "medium" | "low" =
+    confRaw === "high" || confRaw === "medium" || confRaw === "low" ? confRaw : "low";
+  const fallback_used = Boolean(parsed.fallback_used);
+
+  let score = 40;
+  if (confidence === "high") score = fallback_used ? 58 : 84;
+  else if (confidence === "medium") score = fallback_used ? 48 : 68;
+  else score = fallback_used ? 32 : 38;
+
+  const painPoints = likely_pain_point ? [likely_pain_point] : [];
+  const talkingPoints = opener_signal ? [opener_signal] : [];
+
+  return {
+    summary:
+      opener_signal ||
+      `${lead.firstName} ${lead.lastName}${lead.company ? ` at ${lead.company}` : ""}`,
+    companyInfo:
+      company_differentiation ||
+      (lead.company ? `Works at ${lead.company}.` : "Company unknown."),
+    recentActivity: signal_source || "None found",
+    painPoints,
+    talkingPoints,
+    techStack: [],
+    fundingInfo: null,
+    score,
+    opener_signal: opener_signal || undefined,
+    opener_type,
+    signal_source: signal_source || undefined,
+    company_differentiation: company_differentiation || undefined,
+    likely_pain_point: likely_pain_point || undefined,
+    confidence,
+    fallback_used,
+  };
+}
 
 export async function researcherNode(
   state: JarvisStateType
@@ -89,15 +169,15 @@ export async function researcherNode(
   logger.info("researcher", `Raw research gathered — ${sourcesCount} source sections`);
 
   // ── Synthesize with LLM ──
-  const llm = createLLMClient({ temperature: 0.2, maxTokens: 1200 });
+  const llm = createLLMClient({ temperature: 0.2, maxTokens: 1400 });
   logger.step("researcher", `Synthesizing research for ${name}…`);
 
   try {
     const response = await llm.invoke([
-      { role: "system", content: RESEARCH_SYNTHESIS_PROMPT },
+      { role: "system", content: RESEARCHER_SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Synthesize research for: ${name}${lead.title ? `, ${lead.title}` : ""}${lead.company ? ` at ${lead.company}` : ""}.\n\nRaw data:\n\n${rawParts.join("\n\n").slice(0, 12000)}`,
+        content: `Prospect: ${name}${lead.title ? `, ${lead.title}` : ""}${lead.company ? ` at ${lead.company}` : ""}.\n\nRaw evidence (do not summarize as a bio — extract a concrete opener_signal):\n\n${rawParts.join("\n\n").slice(0, 12000)}`,
       },
     ]);
 
@@ -115,17 +195,21 @@ export async function researcherNode(
       };
     }
 
-    const research: ResearchData = JSON.parse(jsonMatch[0]);
-    logger.success("researcher", `Research complete — score: ${research.score}/100, ${research.talkingPoints.length} talking points`);
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    const research = mergeResearchOutput(parsed, lead);
+    logger.success(
+      "researcher",
+      `Research complete — score: ${research.score}/100, opener_type: ${research.opener_type ?? "n/a"}`
+    );
 
     return {
       researchData: research,
       messages: [
         new AIMessage(
           `Research on ${lead.firstName} done. Score: ${research.score}/100. ` +
-            (research.talkingPoints.length
-              ? `Best angles: ${research.talkingPoints.slice(0, 2).join("; ")}.`
-              : "Limited personalization angles found — I'll work with what we have.")
+            (research.opener_signal
+              ? `Signal: ${research.opener_signal.slice(0, 200)}${research.opener_signal.length > 200 ? "…" : ""}`
+              : "Limited personalization signals — using fallback.")
         ),
       ],
     };
@@ -151,8 +235,9 @@ function buildFallbackResearch(lead: {
   title: string | null;
   company: string | null;
 }): ResearchData {
+  const label = `${lead.firstName} ${lead.lastName}${lead.title ? `, ${lead.title}` : ""}${lead.company ? ` at ${lead.company}` : ""}`;
   return {
-    summary: `${lead.firstName} ${lead.lastName}${lead.title ? `, ${lead.title}` : ""}${lead.company ? ` at ${lead.company}` : ""}. Limited research data available.`,
+    summary: `${label}. Limited research data available.`,
     companyInfo: lead.company ? `Works at ${lead.company}. Further details unavailable.` : "Company unknown.",
     recentActivity: "None found",
     painPoints: [],
@@ -160,5 +245,16 @@ function buildFallbackResearch(lead: {
     techStack: [],
     fundingInfo: null,
     score: 20,
+    opener_signal: lead.company
+      ? `Building at ${lead.company} — specifics not verified from public sources.`
+      : "Limited public signal — proceed with care.",
+    opener_type: "general",
+    signal_source: "fallback",
+    company_differentiation: lead.company
+      ? `${lead.company} — differentiation not verified.`
+      : "Unknown company positioning.",
+    likely_pain_point: "Unknown — thin data.",
+    confidence: "low",
+    fallback_used: true,
   };
 }

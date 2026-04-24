@@ -152,6 +152,7 @@ export async function startCampaignRun(params: {
   dryRun?: boolean;
   complianceEmailSuffix?: string;
   senderDisplayName?: string;
+  senderSignoff?: string;
 }) {
   const threadId = params.threadId ?? crypto.randomUUID();
 
@@ -169,6 +170,7 @@ export async function startCampaignRun(params: {
     dryRun: params.dryRun ?? false,
     complianceEmailSuffix: params.complianceEmailSuffix ?? "",
     senderDisplayName: params.senderDisplayName ?? "",
+    senderSignoff: params.senderSignoff ?? "Best",
   };
 
   const stream = await jarvisGraph.stream(initialState, {

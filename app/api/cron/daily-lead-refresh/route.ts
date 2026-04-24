@@ -4,6 +4,8 @@ import { logger } from "@/lib/logger";
 import { sendSlackNotification } from "@/lib/slack";
 import { countSendsTodayUtc } from "@/lib/usage-limits";
 
+/** Operator: set `APOLLO_API_KEY` in Vercel (or host env) so ICP discovery can use Apollo (see `lib/discover/engine.ts`). */
+
 export const runtime = "nodejs";
 export const maxDuration = 300;
 

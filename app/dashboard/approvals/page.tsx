@@ -130,17 +130,24 @@ function ResearchSnippet({
   research: Record<string, unknown> | null | undefined;
 }) {
   if (!research || typeof research !== "object") return null;
+  const opener =
+    typeof research.opener_signal === "string" && research.opener_signal.trim()
+      ? research.opener_signal.trim()
+      : null;
   const summary = typeof research.summary === "string" ? research.summary : null;
   const points = Array.isArray(research.talkingPoints)
     ? (research.talkingPoints as string[]).slice(0, 3)
     : [];
-  if (!summary && points.length === 0) return null;
+  if (!opener && !summary && points.length === 0) return null;
   return (
     <div className="rounded-md border border-jarvis-blue/20 bg-jarvis-blue/[0.06] p-3 text-xs text-jarvis-muted">
       <p className="font-semibold uppercase tracking-wider text-jarvis-blue/80">
         Quick context
       </p>
-      {summary && (
+      {opener && (
+        <p className="mt-2 font-medium leading-relaxed text-white/90">{opener}</p>
+      )}
+      {!opener && summary && (
         <p className="mt-2 leading-relaxed text-jarvis-muted">{summary}</p>
       )}
       {points.length > 0 && (

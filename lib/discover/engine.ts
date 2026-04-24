@@ -1,9 +1,15 @@
+/**
+ * Lead discovery engine.
+ * Set `APOLLO_API_KEY` in Vercel (or `.env.local`) for Apollo-backed discovery — one shared key for all users.
+ */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ICPSignals } from "@/lib/icp/parser";
 import { hashIcpSignalsSha256 } from "@/lib/icp/hash";
 
 export interface RawLead {
   name: string | null;
+  /** GitHub login (or similar) when display name is missing */
+  username?: string | null;
   email: string | null;
   title: string | null;
   company: string | null;
@@ -18,6 +24,8 @@ export interface RawLead {
 
 const HOUR_MS = 3600_000;
 const MAX_RUNS_PER_WINDOW = 3;
+/** Safety cap per discovery run (deduped). */
+const MAX_LEADS_PER_RUN = 50;
 
 async function checkRateLimit(
   supabase: SupabaseClient,
@@ -149,10 +157,16 @@ async function discoverGitHub(signals: ICPSignals): Promise<RawLead[]> {
         r.status === "fulfilled" && r.value !== null
     )
     .map((r) => r.value as Record<string, unknown>)
-    .filter((p) => p.email || p.blog)
-    .map((p) =>
-      emptyLead({
-        name: (p.name as string) ?? (p.login as string),
+    .filter((p) => typeof p.login === "string" && (p.login as string).length > 0)
+    .map((p) => {
+      const login = String(p.login);
+      const displayName =
+        typeof p.name === "string" && (p.name as string).trim()
+          ? (p.name as string).trim()
+          : login;
+      return emptyLead({
+        name: displayName,
+        username: login,
         email: (p.email as string) ?? null,
         title: null,
         company:
@@ -160,27 +174,23 @@ async function discoverGitHub(signals: ICPSignals): Promise<RawLead[]> {
             ? String(p.company).replace("@", "")
             : null,
         bio: (p.bio as string) ?? null,
-        url: (p.blog as string) ?? `https://github.com/${p.login as string}`,
+        url: (p.blog as string) ?? `https://github.com/${login}`,
         source: "github",
-      })
-    );
+      });
+    });
 }
 
 async function discoverHN(signals: ICPSignals): Promise<RawLead[]> {
-  const query = [...signals.roles.slice(0, 2), ...signals.industries.slice(0, 2)].join(
-    " "
-  );
+  /* TEMPORARILY DISABLED — HN produces noisy hobby-side projects. Restore by uncommenting below and removing the `return []`.
+  const query = [...signals.roles.slice(0, 2), ...signals.industries.slice(0, 2)].join(" ");
   if (!query.trim()) return [];
-
   const response = await fetch(
     `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=ask_hn&hitsPerPage=10`,
     { next: { revalidate: 3600 } }
   );
   if (!response.ok) return [];
-
   const data = (await response.json()) as { hits?: { author?: string; story_text?: string }[] };
   if (!data.hits?.length) return [];
-
   return data.hits
     .filter((hit) => hit.author)
     .map((hit) =>
@@ -194,6 +204,9 @@ async function discoverHN(signals: ICPSignals): Promise<RawLead[]> {
         source: "hn",
       })
     );
+  */
+  void signals;
+  return [];
 }
 
 async function discoverProductHunt(signals: ICPSignals): Promise<RawLead[]> {
@@ -241,9 +254,18 @@ async function discoverProductHunt(signals: ICPSignals): Promise<RawLead[]> {
   return posts.flatMap((edge) => {
     const node = edge.node;
     const makers = (node.makers as Record<string, unknown>[]) ?? [];
-    return makers.map((maker) =>
-      emptyLead({
-        name: (maker.name as string) ?? null,
+    return makers.map((maker) => {
+      const uname =
+        typeof maker.username === "string" && (maker.username as string).trim()
+          ? String(maker.username).trim()
+          : null;
+      const display =
+        typeof maker.name === "string" && (maker.name as string).trim()
+          ? String(maker.name).trim()
+          : uname;
+      return emptyLead({
+        name: display,
+        username: uname,
         email: null,
         title: (maker.headline as string) ?? null,
         company: (node.name as string) ?? null,
@@ -251,10 +273,10 @@ async function discoverProductHunt(signals: ICPSignals): Promise<RawLead[]> {
         url:
           (maker.websiteUrl as string) ??
           (node.website as string) ??
-          `https://www.producthunt.com/@${maker.username}`,
+          (uname ? `https://www.producthunt.com/@${uname}` : "https://www.producthunt.com/"),
         source: "producthunt",
-      })
-    );
+      });
+    });
   });
 }
 
@@ -313,9 +335,16 @@ async function discoverApollo(
       (typeof p.last_name_obfuscated === "string" && p.last_name_obfuscated) ||
       "";
     const first = typeof p.first_name === "string" ? p.first_name : "";
-    const name = `${first} ${last}`.trim() || "Unknown";
+    const linkedin = typeof p.linkedin_url === "string" ? p.linkedin_url : "";
+    const slug =
+      linkedin.match(/linkedin\.com\/in\/([^/?#]+)/i)?.[1]?.replace(/-/g, " ") ?? "";
+    const name =
+      `${first} ${last}`.trim() ||
+      (slug ? slug.trim() : "") ||
+      "Prospect";
     return emptyLead({
       name,
+      username: null,
       // People API Search does not return email/phone; enrichment is a separate call.
       email: (p.email as string) ?? null,
       title: (p.title as string) ?? null,
@@ -358,15 +387,8 @@ export async function findLeads(
     }
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("apollo_api_key")
-    .eq("id", userId)
-    .single();
-
-  const row = profile as { apollo_api_key?: string | null } | null;
-  const apolloKey =
-    row?.apollo_api_key?.trim() || process.env.APOLLO_API_KEY?.trim() || null;
+  /** Global Apollo key only — per-user keys in Settings are reserved for future use. */
+  const apolloKey = process.env.APOLLO_API_KEY?.trim() || null;
 
   const [githubResult, hnResult, phResult, apolloResult] = await Promise.allSettled([
     discoverGitHub(signals),
@@ -405,13 +427,18 @@ export async function findLeads(
   const allLeads = [...p, ...a, ...g, ...h];
   const seen = new Set<string>();
   const deduped = allLeads.filter((lead) => {
-    const key = lead.email ?? lead.url ?? lead.name ?? Math.random().toString();
+    const key =
+      lead.email ??
+      lead.url ??
+      (lead.username ? `gh:${lead.username}` : null) ??
+      lead.name ??
+      Math.random().toString();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 
-  const capped = deduped.slice(0, 25);
+  const capped = deduped.slice(0, MAX_LEADS_PER_RUN);
   await setCachedLeads(supabase, userId, icpHash, icpDescription, capped, sourceStats);
 
   return {

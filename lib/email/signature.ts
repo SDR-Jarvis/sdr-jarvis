@@ -40,12 +40,17 @@ export function hasLikelyClosingSignature(body: string): boolean {
  * Append plain-text signature after main content (before compliance footer).
  * Idempotent if marker or heuristic already matches.
  */
-export function appendSignaturePlain(body: string, senderName: string): string {
+export function appendSignaturePlain(
+  body: string,
+  senderName: string,
+  signoffPhrase: string = "Best"
+): string {
   const name = resolveSenderName(senderName);
+  const closing = (signoffPhrase ?? "").trim() || "Best";
   const trimmed = body.trimEnd();
   if (bodyHasJarvisSignatureMarker(trimmed) || hasLikelyClosingSignature(trimmed)) {
     return body;
   }
-  const block = `\n\nBest,\n${name}\n${EMAIL_SIGNATURE_MARKER}`;
+  const block = `\n\n${closing},\n${name}\n${EMAIL_SIGNATURE_MARKER}`;
   return `${trimmed}${block}`;
 }

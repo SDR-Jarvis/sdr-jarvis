@@ -3,16 +3,19 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Linkedin, Building2, User, MessageSquare, Loader2, X, Send } from "lucide-react";
+import { displayLeadCompany, displayLeadFullName } from "@/lib/lead-display";
 
 interface Lead {
   id: string;
-  name: string;
-  email: string;
-  company: string;
-  title: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  company: string | null;
+  title: string | null;
   status: string;
-  linkedin_url?: string;
-  enrichment_score?: number;
+  linkedin_url?: string | null;
+  enrichment_data?: Record<string, unknown> | null;
+  enrichment_score?: number | null;
 }
 
 const STATUS_BADGE: Record<string, { text: string; class: string }> = {
@@ -60,6 +63,11 @@ export function CampaignLeadsTable({ leads }: { leads: Lead[] }) {
             {leads.map((lead) => {
               const badge = STATUS_BADGE[lead.status] ?? STATUS_BADGE.new;
               const canLogReply = ["sent", "delivered", "contacted"].includes(lead.status);
+              const displayName = displayLeadFullName(lead);
+              const initials =
+                `${(lead.first_name ?? "").charAt(0) || "?"}${(lead.last_name ?? "").charAt(0) || ""}`.trim() ||
+                displayName.charAt(0) ||
+                "?";
               return (
                 <tr
                   key={lead.id}
@@ -68,10 +76,10 @@ export function CampaignLeadsTable({ leads }: { leads: Lead[] }) {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-jarvis-blue/10 text-jarvis-blue text-xs font-bold">
-                        {lead.name?.charAt(0) ?? "?"}
+                        {initials.slice(0, 2)}
                       </div>
                       <div>
-                        <p className="font-medium text-white">{lead.name || "Unknown"}</p>
+                        <p className="font-medium text-white">{displayName}</p>
                         <div className="flex items-center gap-2 text-xs text-jarvis-muted">
                           {lead.title && (
                             <span className="flex items-center gap-1">
@@ -86,7 +94,7 @@ export function CampaignLeadsTable({ leads }: { leads: Lead[] }) {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 text-jarvis-muted">
                       <Building2 className="h-3.5 w-3.5" />
-                      {lead.company || "—"}
+                      {displayLeadCompany(lead.company)}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -203,7 +211,7 @@ function LogReplyModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
           <div>
             <h3 className="text-lg font-semibold text-white">Log Reply</h3>
             <p className="text-sm text-jarvis-muted">
-              Paste {lead.name}&apos;s reply and Jarvis will analyze it
+              Paste {displayLeadFullName(lead)}&apos;s reply and Jarvis will analyze it
             </p>
           </div>
           <button onClick={onClose} className="text-jarvis-muted hover:text-white">
@@ -315,7 +323,7 @@ function LogReplyModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
             {autoSent && (
               <div className="flex items-center gap-2 rounded-md bg-jarvis-success/10 p-3 text-xs font-medium text-jarvis-success">
                 <Send className="h-4 w-4" />
-                Jarvis auto-replied to {lead.name}!
+                Jarvis auto-replied to {displayLeadFullName(lead)}!
               </div>
             )}
 

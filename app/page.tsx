@@ -59,6 +59,7 @@ export default function LandingPage() {
     process.env.NEXT_PUBLIC_GITHUB_OAUTH_ENABLED === "true";
   const linkedinOAuthEnabled =
     process.env.NEXT_PUBLIC_LINKEDIN_OAUTH_ENABLED === "true";
+  const calendlyUrl = process.env.NEXT_PUBLIC_CALENDLY_URL?.trim() ?? "";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -247,6 +248,16 @@ export default function LandingPage() {
           <a href="#features" className="hidden sm:block text-sm text-jarvis-muted hover:text-white transition-colors">
             Features
           </a>
+          {calendlyUrl ? (
+            <a
+              href={calendlyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex rounded-lg border border-jarvis-border px-4 py-2 text-sm font-medium text-jarvis-muted transition-all hover:border-jarvis-blue/30 hover:text-white"
+            >
+              Book a demo
+            </a>
+          ) : null}
           <a
             href="#get-started"
             className="rounded-lg bg-jarvis-blue px-4 py-2 text-sm font-semibold text-jarvis-dark transition-all hover:brightness-110 active:scale-[0.98]"
@@ -276,14 +287,25 @@ export default function LandingPage() {
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
           <a
             href="#get-started"
-            className="flex items-center gap-2 rounded-lg bg-jarvis-blue px-6 py-3 text-sm font-bold text-jarvis-dark transition-all hover:brightness-110 active:scale-[0.98]"
+            className="flex h-12 items-center justify-center gap-2 rounded-lg bg-jarvis-blue px-6 text-sm font-bold text-jarvis-dark transition-all hover:brightness-110 active:scale-[0.98]"
           >
-            Start Free — No Credit Card
+            Get Started Free
             <ArrowRight className="h-4 w-4" />
           </a>
+          {calendlyUrl ? (
+            <a
+              href={calendlyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-12 items-center justify-center gap-2 rounded-lg border border-jarvis-border px-6 text-sm font-medium text-white transition-all hover:border-jarvis-blue/40 hover:bg-white/[0.03]"
+            >
+              Book a demo
+              <ArrowRight className="h-4 w-4" />
+            </a>
+          ) : null}
           <a
             href="#how-it-works"
-            className="flex items-center gap-2 rounded-lg border border-jarvis-border px-6 py-3 text-sm font-medium text-jarvis-muted transition-all hover:border-jarvis-blue/30 hover:text-white"
+            className="flex h-12 items-center justify-center gap-2 rounded-lg border border-jarvis-border px-6 text-sm font-medium text-jarvis-muted transition-all hover:border-jarvis-blue/30 hover:text-white"
           >
             See How It Works
             <ChevronRight className="h-4 w-4" />
@@ -581,13 +603,32 @@ export default function LandingPage() {
                   autoFocus
                 />
               </div>
-              <button
-                type="submit"
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-jarvis-blue px-4 py-3 text-sm font-bold text-jarvis-dark transition-all hover:brightness-110 active:scale-[0.98]"
+              <div
+                className={
+                  calendlyUrl
+                    ? "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3"
+                    : "flex w-full"
+                }
               >
-                Get Started Free
-                <ArrowRight className="h-4 w-4" />
-              </button>
+                <button
+                  type="submit"
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-jarvis-blue px-4 text-sm font-bold text-jarvis-dark transition-all hover:brightness-110 active:scale-[0.98]"
+                >
+                  Get Started Free
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+                {calendlyUrl ? (
+                  <a
+                    href={calendlyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-jarvis-border px-4 text-sm font-medium text-white transition-all hover:border-jarvis-blue/40 hover:bg-white/[0.03]"
+                  >
+                    Book a demo
+                    <ArrowRight className="h-4 w-4" />
+                  </a>
+                ) : null}
+              </div>
               <div className="flex flex-col items-center gap-2 text-center">
                 <button
                   type="button"
@@ -767,6 +808,28 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {calendlyUrl ? (
+        <section className="relative z-10 mx-auto max-w-2xl px-6 pb-16">
+          <div className="jarvis-card border-jarvis-blue/25 bg-jarvis-surface/40 p-8 text-center">
+            <h2 className="text-lg font-semibold text-white sm:text-xl">
+              Want to see it work on your pipeline?
+            </h2>
+            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-jarvis-muted">
+              I&apos;ll personally walk you through a live demo with your actual ICP. Usually 20 minutes.
+            </p>
+            <a
+              href={calendlyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-jarvis-blue px-6 text-sm font-bold text-jarvis-dark transition-all hover:brightness-110"
+            >
+              Book a demo call
+              <ArrowRight className="h-4 w-4" />
+            </a>
+          </div>
+        </section>
+      ) : null}
 
       {/* ═══════════ FOOTER ═══════════ */}
       <footer className="relative z-10 border-t border-jarvis-border/30">
