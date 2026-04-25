@@ -13,6 +13,7 @@ import {
 import { formatRelativeTime } from "@/lib/utils";
 import { RunPipelineButton } from "./run-button";
 import { CampaignLeadsTable } from "./leads-table";
+import { CampaignDetailDelete } from "./campaign-detail-delete";
 
 const STATUS_LABEL: Record<string, { text: string; class: string }> = {
   draft: { text: "Draft", class: "bg-white/10 text-jarvis-muted" },
@@ -106,28 +107,31 @@ export default async function CampaignDetailPage({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {pendingCount > 0 && (
-            <Link href="/dashboard/approvals" className="jarvis-btn-ghost text-xs">
-              <Clock className="h-3.5 w-3.5" />
-              {pendingCount} pending approval{pendingCount > 1 ? "s" : ""}
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {pendingCount > 0 && (
+              <Link href="/dashboard/approvals" className="jarvis-btn-ghost text-xs">
+                <Clock className="h-3.5 w-3.5" />
+                {pendingCount} pending approval{pendingCount > 1 ? "s" : ""}
+              </Link>
+            )}
+            <Link
+              href={`/dashboard/leads/import?campaign=${id}`}
+              className="jarvis-btn-ghost"
+            >
+              <Users className="h-4 w-4" />
+              Add Leads
             </Link>
-          )}
-          <Link
-            href={`/dashboard/leads/import?campaign=${id}`}
-            className="jarvis-btn-ghost"
-          >
-            <Users className="h-4 w-4" />
-            Add Leads
-          </Link>
-          <RunPipelineButton
-            campaignId={id}
-            canRun={canRun}
-            newLeadsCount={newLeadsCount}
-            totalLeads={allLeads.length}
-            hasStaleRun={hasStaleRun}
-            campaignStatus={campaign.status}
-          />
+            <RunPipelineButton
+              campaignId={id}
+              canRun={canRun}
+              newLeadsCount={newLeadsCount}
+              totalLeads={allLeads.length}
+              hasStaleRun={hasStaleRun}
+              campaignStatus={campaign.status}
+            />
+          </div>
+          <CampaignDetailDelete campaignId={campaign.id} campaignName={campaign.name} />
         </div>
       </div>
 

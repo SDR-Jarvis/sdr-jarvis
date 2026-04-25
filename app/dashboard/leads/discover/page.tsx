@@ -18,9 +18,7 @@ import {
   discoverySourceLabel,
   fitLabel,
 } from "@/lib/product-copy";
-import { isValidLead } from "@/lib/isValidLead";
 import { displayLeadCompany } from "@/lib/lead-display";
-import type { ScoredLead } from "@/lib/icp/scorer";
 
 type IcpLabel = "hot" | "maybe" | "weak";
 
@@ -85,7 +83,26 @@ export default function DiscoverLeadsPage() {
     returned: number;
     filterRelaxed?: boolean;
   } | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [createCampaignOpen, setCreateCampaignOpen] = useState(false);
+  const [newCampaignName, setNewCampaignName] = useState("");
+  const [creatingCampaign, setCreatingCampaign] = useState(false);
   const loadingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadCampaigns = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return [];
+    const { data } = await supabase
+      .from("campaigns")
+      .select("id, name")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    const list = data ?? [];
+    setCampaigns(list);
+    return list;
+  }, [supabase]);
 
   useEffect(() => {
     if (icpDescription !== "") return;
@@ -96,21 +113,18 @@ export default function DiscoverLeadsPage() {
   }, [icpDescription]);
 
   useEffect(() => {
-    async function loadCampaigns() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("campaigns")
-        .select("id, name")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-      setCampaigns(data ?? []);
-      if (data?.length) setCampaignId(data[0].id);
-    }
-    loadCampaigns();
-  }, [supabase]);
+    void loadCampaigns().then((list) => {
+      if (list.length > 0) {
+        setCampaignId((prev) => (prev && list.some((c) => c.id === prev) ? prev : list[0].id));
+      }
+    });
+  }, [loadCampaigns]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     if (!loading) {
@@ -234,120 +248,111 @@ export default function DiscoverLeadsPage() {
 
   async function importRows(indices: number[]) {
     const withEmail = indices.filter((i) => hasValidEmail(i));
-    if (withEmail.length === 0 || !campaignId) {
-      setImportResult("Select leads with a valid email, and pick a campaign.");
+
+    if (!campaignId.trim()) {
+      const msg = "Pick a campaign first or create a new one.";
+      setImportResult(msg);
+      setToast({ type: "error", msg });
+      return;
+    }
+
+    if (withEmail.length === 0) {
+      setImportResult("Select leads with a valid email.");
       return;
     }
 
     setImporting(true);
     setImportResult(null);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setImportResult("Please sign in again.");
-      setImporting(false);
-      return;
-    }
+    setToast(null);
 
-    const totalFound = withEmail.length;
-    let totalFiltered = 0;
-    const rows: Record<string, unknown>[] = [];
-
-    for (const i of withEmail) {
+    const leadsPayload = withEmail.map((i) => {
       const lead = leads[i];
-      const url = lead.url?.startsWith("http") ? lead.url : null;
-      const companyNorm =
-        (lead.company ?? "").trim() ||
-        (url?.includes("github.com") ? "Independent Founder" : "");
-      const scored: ScoredLead = {
-        name: lead.name ?? lead.username ?? null,
+      return {
+        name: lead.name,
         username: lead.username ?? null,
         email: emailAt(i),
         title: lead.title,
-        company: companyNorm || null,
+        company: lead.company,
         bio: lead.bio,
-        url,
-        source: lead.source as ScoredLead["source"],
-        raw_score: lead.raw_score ?? 0,
+        url: lead.url,
+        source: lead.source,
         icp_label: lead.icp_label,
-        icp_match_reason: lead.icp_match_reason,
         icp_score: lead.icp_score ?? 0,
+        icp_match_reason: lead.icp_match_reason,
       };
-
-      if (!isValidLead(scored)) {
-        totalFiltered += 1;
-        // eslint-disable-next-line no-console -- import-side filter diagnostics
-        console.log("Filtered lead:", {
-          name: scored.name,
-          company: scored.company,
-          score: scored.icp_score,
-        });
-        continue;
-      }
-
-      const displayName =
-        (lead.name ?? "").trim() || (lead.username ?? "").trim() || "Contact";
-      const parts = displayName.split(/\s+/);
-      const first = parts[0] || "Contact";
-      const last = parts.slice(1).join(" ") || " ";
-
-      const enrichment: Record<string, string> = {};
-      if (lead.source === "github" && lead.username?.trim()) {
-        enrichment.github_username = lead.username.trim();
-      }
-
-      rows.push({
-        campaign_id: campaignId,
-        user_id: user.id,
-        first_name: first,
-        last_name: last,
-        company: displayLeadCompany(lead.company),
-        company_url: url,
-        title: lead.title || null,
-        email: emailAt(i),
-        linkedin_url: url?.includes("linkedin.com") ? url : null,
-        status: "new" as const,
-        discovery_source: lead.source,
-        icp_label: lead.icp_label,
-        icp_score: lead.icp_score ?? null,
-        icp_match_reason: lead.icp_match_reason || null,
-        enrichment_data: Object.keys(enrichment).length ? enrichment : {},
-      });
-    }
-
-    const totalSaved = rows.length;
-
-    // eslint-disable-next-line no-console -- import batch metrics
-    console.log("Discovery Summary:", {
-      found: totalFound,
-      filtered: totalFiltered,
-      saved: totalSaved,
     });
 
-    if (rows.length === 0) {
+    try {
+      const res = await fetch("/api/leads/add-from-discovery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaign_id: campaignId, leads: leadsPayload }),
+      });
+      const json = (await res.json()) as {
+        error?: string;
+        count?: number;
+        campaign_name?: string;
+        campaign_id?: string;
+      };
+
+      if (!res.ok) {
+        const errMsg = json.error ?? "Could not add leads.";
+        setImportResult(errMsg);
+        setToast({ type: "error", msg: errMsg });
+        return;
+      }
+
+      const n = json.count ?? 0;
+      const cname = json.campaign_name ?? "your campaign";
+      const successMsg = `${n} lead${n === 1 ? "" : "s"} added to ${cname}.`;
+      setToast({ type: "success", msg: successMsg });
+      let msg = `${successMsg} Run the pipeline when you're ready.`;
+      if (n < 5) {
+        msg += `\n\nWe couldn't find strong matches yet.\nTry broadening your description.\n\nExample ICP: "SaaS founders building developer tools"`;
+      }
+      setImportResult(msg);
+      setSelected(new Set());
+    } catch {
+      const errMsg = "Network error. Try again.";
+      setImportResult(errMsg);
+      setToast({ type: "error", msg: errMsg });
+    } finally {
       setImporting(false);
-      setImportResult(
-        "No leads passed validation to save. Try different rows or broaden your ICP."
-      );
-      return;
     }
+  }
 
-    const { data, error } = await supabase.from("leads").insert(rows).select("id");
-    setImporting(false);
+  async function handleCreateCampaign() {
+    const name = newCampaignName.trim();
+    if (!name) return;
+    setCreatingCampaign(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setToast({ type: "error", msg: "Please sign in again." });
+        return;
+      }
+      const { data, error } = await supabase
+        .from("campaigns")
+        .insert({ user_id: user.id, name })
+        .select("id, name")
+        .single();
 
-    if (error) {
-      setImportResult("Could not import those leads. Check emails and try again.");
-      return;
+      if (error || !data) {
+        console.error("[Discover] Create campaign FAILED:", error);
+        setToast({ type: "error", msg: error?.message ?? "Could not create campaign." });
+        return;
+      }
+
+      await loadCampaigns();
+      setCampaignId(data.id);
+      setNewCampaignName("");
+      setCreateCampaignOpen(false);
+      setToast({ type: "success", msg: `Campaign "${data.name}" created.` });
+    } finally {
+      setCreatingCampaign(false);
     }
-
-    const n = data?.length ?? 0;
-    let msg = `${n} lead${n === 1 ? "" : "s"} added to your campaign. Run the pipeline when you're ready.`;
-    if (n < 5) {
-      msg += `\n\nWe couldn't find strong matches yet.\nTry broadening your description.\n\nExample ICP: "SaaS founders building developer tools"`;
-    }
-    setImportResult(msg);
-    setSelected(new Set());
   }
 
   return (
@@ -481,30 +486,94 @@ export default function DiscoverLeadsPage() {
 
       {!loading && leads.length > 0 && (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-jarvis-border bg-jarvis-surface/40 px-4 py-3">
-            <div>
+          {toast ? (
+            <div
+              className={`fixed bottom-6 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-lg border px-4 py-3 text-sm shadow-lg ${
+                toast.type === "success"
+                  ? "border-jarvis-success/40 bg-jarvis-dark text-jarvis-success"
+                  : "border-jarvis-danger/40 bg-jarvis-dark text-jarvis-danger"
+              }`}
+            >
+              {toast.msg}
+            </div>
+          ) : null}
+
+          {createCampaignOpen ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/60"
+                aria-label="Close"
+                onClick={() => !creatingCampaign && setCreateCampaignOpen(false)}
+              />
+              <div className="relative z-10 w-full max-w-md rounded-lg border border-jarvis-border bg-jarvis-surface p-6 shadow-xl">
+                <h3 className="text-lg font-semibold text-white">Create campaign</h3>
+                <p className="mt-1 text-sm text-jarvis-muted">
+                  Name your workspace — it will be selected for adding leads below.
+                </p>
+                <input
+                  value={newCampaignName}
+                  onChange={(e) => setNewCampaignName(e.target.value)}
+                  placeholder="e.g. Seed outreach — March"
+                  className="jarvis-input mt-4"
+                  autoFocus
+                />
+                <div className="mt-4 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    className="jarvis-btn-ghost text-sm"
+                    disabled={creatingCampaign}
+                    onClick={() => setCreateCampaignOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="jarvis-btn-primary text-sm"
+                    disabled={creatingCampaign || !newCampaignName.trim()}
+                    onClick={() => void handleCreateCampaign()}
+                  >
+                    {creatingCampaign ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    Create
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="jarvis-card space-y-3 border-jarvis-blue/20">
+            <p className="text-sm font-medium text-white">Add selected leads to campaign</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {campaigns.length > 0 ? (
+                <select
+                  value={campaignId}
+                  onChange={(e) => setCampaignId(e.target.value)}
+                  className="jarvis-input min-w-[200px] max-w-full flex-1 text-sm"
+                >
+                  {campaigns.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-sm text-jarvis-muted">No campaigns yet — create one to save leads.</p>
+              )}
+              <button
+                type="button"
+                onClick={() => setCreateCampaignOpen(true)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-jarvis-border px-3 py-2 text-xs font-medium text-jarvis-muted transition-colors hover:border-jarvis-blue/40 hover:text-white"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Create new
+              </button>
+            </div>
+            <div className="border-t border-white/10 pt-3">
               <p className="text-sm text-white">
                 Found <span className="font-semibold text-jarvis-blue">{leads.length}</span> matches
               </p>
               <p className="text-xs text-jarvis-muted/80 line-clamp-1">&ldquo;{icpDescription.trim()}&rdquo;</p>
             </div>
-            {campaigns.length > 0 ? (
-              <select
-                value={campaignId}
-                onChange={(e) => setCampaignId(e.target.value)}
-                className="jarvis-input max-w-[200px] text-xs"
-              >
-                {campaigns.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <Link href="/dashboard/campaigns/new" className="jarvis-btn-primary text-xs">
-                New campaign
-              </Link>
-            )}
           </div>
 
           {discoveryMeta?.filterRelaxed ? (
@@ -541,7 +610,7 @@ export default function DiscoverLeadsPage() {
               type="button"
               disabled={
                 importing ||
-                !campaignId ||
+                !campaignId.trim() ||
                 !highFitIndices.some((i) => hasValidEmail(i))
               }
               onClick={() => void importRows(highFitIndices.filter((i) => hasValidEmail(i)))}
@@ -552,7 +621,7 @@ export default function DiscoverLeadsPage() {
             </button>
             <button
               type="button"
-              disabled={importing || selectedWithEmail.length === 0 || !campaignId}
+              disabled={importing || selectedWithEmail.length === 0 || !campaignId.trim()}
               onClick={() => void importRows(Array.from(selected))}
               className="jarvis-btn-ghost text-xs"
             >
@@ -565,6 +634,7 @@ export default function DiscoverLeadsPage() {
               className={`rounded-md border px-4 py-3 text-sm whitespace-pre-wrap ${
                 importResult.startsWith("Could") ||
                 importResult.startsWith("Select") ||
+                importResult.startsWith("Pick") ||
                 importResult.startsWith("Please") ||
                 importResult.startsWith("No leads passed") ||
                 importResult.includes("We couldn't find strong matches")

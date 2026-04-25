@@ -84,6 +84,8 @@ function SettingsContent() {
   const [pwdResetSending, setPwdResetSending] = useState(false);
   const [pwdError, setPwdError] = useState("");
   const [pwdSuccess, setPwdSuccess] = useState("");
+  const [profileSaveError, setProfileSaveError] = useState("");
+  const [complianceSaveError, setComplianceSaveError] = useState("");
 
   useEffect(() => {
     async function loadProfile() {
@@ -140,59 +142,121 @@ function SettingsContent() {
   async function handleSave() {
     setSaving(true);
     setSaved(false);
+    setProfileSaveError("");
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        console.error("[Profile Save] FAILED: no authenticated user");
+        setProfileSaveError("You are not signed in. Refresh and try again.");
+        return;
+      }
 
-    const profileUpdate: Record<string, unknown> = {
-      full_name: fullName || null,
-      company_name: companyName || null,
-      role: role || null,
-      icp_description: icpDescription || null,
-      timezone,
-      tone_preferences: { formality, humor, signoff },
-      onboarded: true,
-      sending_mode: sendingMode,
-    };
-    if (isAdmin) {
-      profileUpdate.apollo_api_key = apolloApiKey.trim() || null;
+      const profileUpdate: Record<string, unknown> = {
+        full_name: fullName.trim() || null,
+        company_name: companyName.trim() || null,
+        role: role.trim() || null,
+        icp_description: icpDescription.trim() || null,
+        timezone,
+        tone_preferences: { formality, humor, signoff },
+        onboarded: true,
+        sending_mode: sendingMode,
+      };
+      if (isAdmin) {
+        profileUpdate.apollo_api_key = apolloApiKey.trim() || null;
+      }
+
+      const { data: updatedRows, error } = await supabase
+        .from("profiles")
+        .update(profileUpdate)
+        .eq("id", user.id)
+        .select("id, full_name, company_name, role, icp_description");
+
+      if (error) {
+        console.error("[Profile Save] FAILED:", error);
+        setProfileSaveError(getFriendlyAuthError(error.message));
+        return;
+      }
+
+      if (!updatedRows?.length) {
+        console.warn("[Profile Save] Update affected 0 rows — upserting profile");
+        const { data: upserted, error: upsertErr } = await supabase
+          .from("profiles")
+          .upsert({ id: user.id, ...profileUpdate }, { onConflict: "id" })
+          .select("id, full_name, company_name");
+
+        if (upsertErr) {
+          console.error("[Profile Save] FAILED (upsert):", upsertErr);
+          setProfileSaveError(getFriendlyAuthError(upsertErr.message));
+          return;
+        }
+        if (!upserted?.length) {
+          console.error("[Profile Save] FAILED: upsert returned no row");
+          setProfileSaveError("Could not save profile. Try again or contact support.");
+          return;
+        }
+        console.log("[Profile Save] SUCCESS (upsert):", upserted[0]);
+      } else {
+        console.log("[Profile Save] SUCCESS:", updatedRows[0]);
+      }
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } finally {
+      setSaving(false);
     }
-
-    await supabase.from("profiles").update(profileUpdate).eq("id", user.id);
-
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
   }
 
   async function handleSaveCompliance() {
     setSavingCompliance(true);
     setSavedCompliance(false);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    setComplianceSaveError("");
 
-    const line = optOutFooter.trim();
-    if (!line) {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        console.error("[Profile Save] Compliance FAILED: no authenticated user");
+        setComplianceSaveError("You are not signed in.");
+        return;
+      }
+
+      const line = optOutFooter.trim();
+      if (!line) {
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .update({
+          email_opt_out_footer: line,
+          postal_address: postalAddress.trim() || null,
+          warmup_daily_send_cap: Math.min(500, Math.max(1, warmupDailyCap)),
+        })
+        .eq("id", user.id)
+        .select("id");
+
+      if (error) {
+        console.error("[Profile Save] Compliance FAILED:", error);
+        setComplianceSaveError(getFriendlyAuthError(error.message));
+        return;
+      }
+
+      if (!data?.length) {
+        console.error("[Profile Save] Compliance FAILED: no row updated");
+        setComplianceSaveError("Could not save. Try again.");
+        return;
+      }
+
+      console.log("[Profile Save] Compliance SUCCESS:", data[0]);
+      setSavedCompliance(true);
+      setTimeout(() => setSavedCompliance(false), 3000);
+    } finally {
       setSavingCompliance(false);
-      return;
     }
-
-    await supabase
-      .from("profiles")
-      .update({
-        email_opt_out_footer: line,
-        postal_address: postalAddress.trim() || null,
-        warmup_daily_send_cap: Math.min(500, Math.max(1, warmupDailyCap)),
-      })
-      .eq("id", user.id);
-
-    setSavingCompliance(false);
-    setSavedCompliance(true);
-    setTimeout(() => setSavedCompliance(false), 3000);
   }
 
   async function handleUpdatePassword(e: React.FormEvent) {
@@ -537,22 +601,27 @@ function SettingsContent() {
           </div>
 
           {/* Save */}
-          <div className="flex items-center justify-end gap-3">
-            {saved && (
-              <span className="text-sm text-jarvis-success">Settings saved.</span>
-            )}
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="jarvis-btn-primary"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
+          <div className="flex flex-col items-end gap-2">
+            {profileSaveError ? (
+              <p className="max-w-md text-right text-sm text-jarvis-danger">{profileSaveError}</p>
+            ) : null}
+            <div className="flex items-center justify-end gap-3">
+              {saved && (
+                <span className="text-sm text-jarvis-success">Settings saved.</span>
               )}
-              {saving ? "Saving…" : "Save Settings"}
-            </button>
+              <button
+                onClick={() => void handleSave()}
+                disabled={saving}
+                className="jarvis-btn-primary"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {saving ? "Saving…" : "Save Settings"}
+              </button>
+            </div>
           </div>
         </>
       )}
@@ -593,7 +662,7 @@ function SettingsContent() {
                   )}
                   <button
                     type="button"
-                    onClick={handleSave}
+                    onClick={() => void handleSave()}
                     disabled={saving}
                     className="jarvis-btn-primary"
                   >
@@ -627,13 +696,29 @@ function SettingsContent() {
               const {
                 data: { user },
               } = await supabase.auth.getUser();
-              if (!user) return;
+              if (!user) {
+                console.error("[Profile Save] Sending mode FAILED: no user");
+                return;
+              }
               setSendingModeSaving(true);
-              await supabase
-                .from("profiles")
-                .update({ sending_mode: sendingMode })
-                .eq("id", user.id);
-              setSendingModeSaving(false);
+              try {
+                const { data, error } = await supabase
+                  .from("profiles")
+                  .update({ sending_mode: sendingMode })
+                  .eq("id", user.id)
+                  .select("id");
+                if (error) {
+                  console.error("[Profile Save] Sending mode FAILED:", error);
+                  return;
+                }
+                if (!data?.length) {
+                  console.error("[Profile Save] Sending mode FAILED: no row updated");
+                  return;
+                }
+                console.log("[Profile Save] Sending mode SUCCESS:", data[0]);
+              } finally {
+                setSendingModeSaving(false);
+              }
             }}
           />
           <DomainSetupGuide />
@@ -705,13 +790,17 @@ function SettingsContent() {
                 UTC day. Start low (e.g. 5–20) on a new domain; increase as reputation builds.
               </p>
             </div>
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex flex-col items-end gap-2">
+              {complianceSaveError ? (
+                <p className="max-w-md text-right text-sm text-jarvis-danger">{complianceSaveError}</p>
+              ) : null}
+              <div className="flex items-center justify-end gap-3">
               {savedCompliance && (
                 <span className="text-sm text-jarvis-success">Saved.</span>
               )}
               <button
                 type="button"
-                onClick={handleSaveCompliance}
+                onClick={() => void handleSaveCompliance()}
                 disabled={savingCompliance || !optOutFooter.trim()}
                 className="jarvis-btn-primary"
               >
@@ -724,6 +813,7 @@ function SettingsContent() {
               </button>
             </div>
           </div>
+        </div>
           <div className="jarvis-card text-sm text-jarvis-muted leading-relaxed">
             <p className="font-medium text-white">Domain authentication</p>
             <p className="mt-2">
