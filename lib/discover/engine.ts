@@ -389,41 +389,84 @@ async function discoverApollo(
   }
 
   const people = data.people ?? [];
-  const peopleToEnrich = people
+
+  // First, log what fields Apollo actually returns
+  if (people.length > 0) {
+    console.log("[Apollo Debug] First lead fields:", Object.keys(people[0]!));
+    console.log(
+      "[Apollo Debug] Sample lead:",
+      JSON.stringify(people[0], null, 2).slice(0, 1000)
+    );
+  }
+
+  // Try enrichment for leads with enough data
+  const candidatesForEnrichment = people
     .filter((p) => {
       const org = (p.organization as Record<string, unknown> | undefined) ?? {};
-      return !!(p.first_name && p.last_name && org.name);
+      const orgName =
+        (typeof org.name === "string" && org.name) ||
+        (typeof p.organization_name === "string" && p.organization_name) ||
+        "";
+      return !!((p.first_name || p.name) && (p.last_name || p.name) && orgName);
     })
     .slice(0, 5);
 
-  console.log("[Apollo Enrich] Attempting:", peopleToEnrich.length);
+  console.log("[Apollo Enrich] Attempting:", candidatesForEnrichment.length);
 
-  const enriched = await Promise.allSettled(
-    peopleToEnrich.map((p) => enrichApolloEmail(p, apiKey))
+  const enrichedEmails = await Promise.allSettled(
+    candidatesForEnrichment.map((p) => enrichApolloEmail(p, apiKey))
   );
 
-  const enrichedEmails = enriched.map((r) =>
-    r.status === "fulfilled" ? r.value : null
-  );
+  const enrichedMap = new Map<string, string>();
+  candidatesForEnrichment.forEach((p, i) => {
+    const result = enrichedEmails[i];
+    const org = (p.organization as Record<string, unknown> | undefined) ?? {};
+    const companyName =
+      (typeof org.name === "string" ? org.name : "") ||
+      (typeof p.organization_name === "string" ? p.organization_name : "");
+    const firstName =
+      (typeof p.first_name === "string" ? p.first_name : "") ||
+      (typeof p.name === "string" ? p.name : "");
+    if (result?.status === "fulfilled" && result.value) {
+      const key = `${firstName}_${companyName}`;
+      enrichedMap.set(key, result.value);
+    }
+  });
 
   console.log(
     "[Apollo Enrich] Emails found:",
-    enrichedEmails.filter(Boolean).length,
+    enrichedMap.size,
     "of",
-    peopleToEnrich.length
+    candidatesForEnrichment.length
   );
 
-  const leads = peopleToEnrich.map((p, i) => {
+  // Map ALL people to leads, with enriched email if available
+  const leads = people.map((p) => {
     const org = (p.organization as Record<string, unknown> | undefined) ?? {};
-    const first = typeof p.first_name === "string" ? p.first_name : "";
-    const last = typeof p.last_name === "string" ? p.last_name : "";
-    const name = [first, last].filter(Boolean).join(" ").trim() || null;
+    const rawName = typeof p.name === "string" ? p.name : "";
+    const firstName =
+      (typeof p.first_name === "string" && p.first_name) ||
+      (rawName ? rawName.split(" ")[0] : "") ||
+      "";
+    const lastName =
+      (typeof p.last_name === "string" && p.last_name) ||
+      (rawName ? rawName.split(" ").slice(1).join(" ") : "") ||
+      "";
+    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || rawName || null;
+    const companyName =
+      (typeof org.name === "string" && org.name) ||
+      (typeof p.organization_name === "string" ? p.organization_name : null);
+
+    // Look up enriched email
+    const enrichKey = `${firstName}_${companyName ?? ""}`;
+    const enrichedEmail = enrichedMap.get(enrichKey);
+
     return {
-      name,
-      email: enrichedEmails[i] ?? ((p.email as string) ?? null),
+      name: fullName,
+      email: enrichedEmail ?? ((p.email as string) ?? null),
       title: (p.title as string) ?? null,
-      company: (org.name as string) ?? null,
-      bio: null,
+      company: companyName ?? null,
+      bio: (p.headline as string) ?? null,
       url: (p.linkedin_url as string) ?? null,
       source: "apollo" as const,
       raw_score: 0,
@@ -432,6 +475,7 @@ async function discoverApollo(
     } satisfies RawLead;
   });
 
+  console.log("[Apollo] Returning leads:", leads.length);
   return leads;
 }
 
