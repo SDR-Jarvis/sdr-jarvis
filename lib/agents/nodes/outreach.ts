@@ -6,63 +6,104 @@ import { createServiceClient } from "@/lib/supabase/server";
 import type { JarvisStateType, DraftMessage, ResearchData } from "../state";
 
 const OUTREACH_SYSTEM_PROMPT = `
-You are writing a cold email for a B2B AI/SaaS founder
-reaching out to another technical founder or decision-maker.
+You are writing a cold email from one technical founder
+to another. Both are building real products.
 
-HARD RULES:
-1. Under 110 words total (excluding signature)
+TONE: Founder to founder. Casual but smart.
+Like a peer, not a salesperson.
+
+HARD RULES — violating any is failure:
+1. Total body under 80 words (excluding signature)
 2. No bullet points, no bold, no markdown
-3. Never use: "Hope this finds you well", "Just floating",
-   "I came across", "I believe", "I think this might"
-4. Subject line max 7 words
-5. No "schedule a 30-minute call" CTAs
-6. Two-part structure separated by ONE blank line
+3. Subject line max 6 words, lowercase except names
+4. NEVER include: "Awaiting your call", "sir", "ma'am",
+   "Dear", "Hope this finds you well", "Just floating",
+   "I came across", "I believe", "synergize",
+   "streamline", "optimize", "leverage", "value-add"
+5. NEVER include any address, phone, or compliance text
+   in your output — that gets appended automatically
+6. NEVER include internal labels like "Angle:" or
+   "Why this lead:" in the email body
 
-PART 1 — WARM OPENER (2 sentences max):
-Reference {opener_signal} from research as an OBSERVATION,
-not a compliment. Show you actually paid attention to what
-they're building.
+EMAIL STRUCTURE:
 
-BAD: "I was impressed by your recent launch"
-GOOD: "Saw you shipped {specific thing} last month —
-the approach of {specific decision} is cleaner than
-how most teams handle this."
+OPENER (1-2 sentences):
+Show you UNDERSTOOD WHY they made a choice, not just
+what they shipped. The reader already knows what they
+shipped — telling them is flattery, not insight.
 
-If confidence is "low" or fallback_used is true:
-Reference {company_differentiation} instead, still as
-an observation.
+BAD opener:
+"Saw you shipped X — the introduction of features Y
+shows a clear commitment to scalability."
 
-PART 2 — PITCH + CTA (3 sentences max):
-Sentence 1: What sender does in plain language. No buzzwords.
-Sentence 2: Why it's relevant to THIS person specifically.
-Reference {likely_pain_point} or their stage.
-Sentence 3: Soft CTA — a real question.
-"Worth a quick look?" or "Open to a 10-min chat?"
+GOOD opener:
+"Saw you shipped X — going with Y instead of Z seems
+like the right bet given how most teams in this space
+chase the wrong tradeoff."
+
+The opener should make them think: "Yeah, that IS why
+I did it."
+
+PITCH (2-3 sentences):
+Sentence 1: What sender does in plain words.
+  No buzzwords. Pretend you're texting a friend.
+Sentence 2: Why it might be relevant to THIS person
+  given their stage and what they're building.
+Sentence 3 (optional): Soft CTA — a real question.
+
+CTA EXAMPLES (use one):
+- "Worth a quick look?"
+- "Curious if this fits what you're building."
+- "Open to a 10-min chat if useful?"
+- "Happy to share more if interesting."
+
+NEVER:
+- "Schedule a call on my calendar"
+- "Book a demo"
+- "Hop on a quick call"
+- "Sync up"
 
 SIGN-OFF:
-First name only. Then sender's configured sign-off.
+First name only on its own line.
+Then sender's company on next line if relevant.
 
-VARIABLES TO USE:
-opener_signal: {opener_signal}
-company_differentiation: {company_differentiation}
-likely_pain_point: {likely_pain_point}
-confidence: {confidence}
-fallback_used: {fallback_used}
-sender_name: {sender_name}
-sender_company: {sender_company}
-product_description: {product_description}
-sign_off: {sign_off}
+FORBIDDEN PHRASES (do not use under any circumstance):
+"Awaiting your call"
+"Best regards"
+"Sincerely"
+"Looking forward to hearing"
+"Don't hesitate"
+"Reach out anytime"
 
-LEAD: {lead_name}, {lead_title} at {lead_company}
-
-PREVIOUS APPROVED EXAMPLES (match this voice):
-{approved_examples}
-
-OUTPUT — JSON only, no markdown:
+OUTPUT FORMAT — valid JSON only, nothing else:
 {
-  "subject": "...",
-  "body": "..."
+  "subject": "lowercase short subject",
+  "body": "opener\\n\\npitch with cta"
 }
+
+NEVER include compliance text in output.
+NEVER include the angle/signal metadata in body.
+NEVER include addresses or footer info.
+
+Use these variables to write the email:
+
+LEAD:
+- Name: {lead_name}
+- Title: {lead_title}
+- Company: {lead_company}
+
+RESEARCH (use this for the opener):
+- Signal: {opener_signal}
+- Why it matters: {likely_pain_point}
+- Confidence: {confidence}
+
+SENDER:
+- Name: {sender_name}
+- Company: {sender_company}
+- What they do: {product_description}
+
+PAST APPROVED (match this voice):
+{approved_examples}
 `.trim();
 
 const FOLLOW_UP_PROMPT = `You write follow-up cold emails. This is step {STEP} of {TOTAL_STEPS} in a sequence.
@@ -103,10 +144,32 @@ function subjectWordCount(s: string): number {
     .filter((w) => w.replace(/[^a-zA-Z0-9]/g, "").length > 0).length;
 }
 
-function firstNameFromFull(full: string): string {
-  const t = full.trim();
-  if (!t) return "Founder";
-  return t.split(/\s+/)[0] ?? "Founder";
+const FORBIDDEN_PATTERNS: RegExp[] = [
+  /awaiting your call/gi,
+  /\b(?:sir|ma'am)\b/gi,
+  /angle:/gi,
+  /why this lead:/gi,
+  /\d{3,5}\s+[a-z0-9.'-]+\s+(?:st|street|ave|avenue|rd|road|blvd|lane|ln|dr|drive)\b/gi,
+  /\b\d{5}(?:-\d{4})?\b/g,
+  /best regards/gi,
+  /sincerely/gi,
+  /looking forward to hearing/gi,
+  /don't hesitate/gi,
+  /reach out anytime/gi,
+  /\n\n---[\s\S]*$/gi,
+];
+
+function sanitizeDraftBody(body: string): string {
+  let cleanBody = body;
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    pattern.lastIndex = 0;
+    if (pattern.test(cleanBody)) {
+      console.warn("[Outreach] Stripping forbidden pattern:", pattern);
+      pattern.lastIndex = 0;
+      cleanBody = cleanBody.replace(pattern, "").trim();
+    }
+  }
+  return cleanBody;
 }
 
 function fillInitialOutreachPrompt(params: {
@@ -256,8 +319,7 @@ export async function outreachNode(
       });
 
       userContent =
-        "Write the email. Use Hi [FirstName], as the greeting line (replace [FirstName] with the lead's first name only). " +
-        `End the body with two lines: your first name only (${firstNameFromFull(senderName)}), then the sign-off phrase (${signOff}) on the next line. No extra lines after that.`;
+        "Write the email now. Use Hi [FirstName], as the greeting line (replace [FirstName] with the lead's first name only). Keep it concise and follow the JSON format exactly.";
     } catch {
       systemPrompt = fillInitialOutreachPrompt({
         research,
@@ -273,7 +335,7 @@ export async function outreachNode(
         lead_company: lead.company ?? "",
       });
       userContent =
-        "Write the email. Use Hi [FirstName], as the greeting. Replace [FirstName] with the lead's first name only.";
+        "Write the email now. Use Hi [FirstName], as the greeting. Replace [FirstName] with the lead's first name only. Return valid JSON only.";
     }
   }
 
@@ -327,7 +389,9 @@ export async function outreachNode(
 
     let draft: DraftMessage = JSON.parse(jsonMatch[0]);
     draft.channel = draft.channel ?? "email";
-    draft.body = draft.body.replace(/\[FirstName\]/gi, lead.firstName);
+    draft.body = sanitizeDraftBody(
+      draft.body.replace(/\[FirstName\]/gi, lead.firstName)
+    );
     if (!draft.personalizationNotes) {
       draft.personalizationNotes =
         research.opener_signal ?? research.talkingPoints[0] ?? "Research-led angle.";
@@ -335,7 +399,7 @@ export async function outreachNode(
 
     const wc = wordCount(draft.body);
     const sc = subjectWordCount(draft.subject);
-    if (wc > 110 || sc > 7) {
+    if (wc > 80 || sc > 6) {
       logger.warn(
         "outreach",
         `Draft length check (words: ${wc}, subject words: ${sc}) — requesting revision`
@@ -349,7 +413,7 @@ export async function outreachNode(
         },
         {
           role: "user",
-          content: `Revise: body must be under 110 words (currently ${wc}). Subject max 7 words (currently ${sc}). Same JSON shape with subject, body, personalizationNotes. No bullets, no bold.`,
+          content: `Revise: body must be under 80 words (currently ${wc}). Subject max 6 words (currently ${sc}). Same JSON shape with subject, body, personalizationNotes. No bullets, no bold.`,
         },
       ]);
 
@@ -361,7 +425,9 @@ export async function outreachNode(
       if (revMatch) {
         draft = JSON.parse(revMatch[0]);
         draft.channel = draft.channel ?? "email";
-        draft.body = draft.body.replace(/\[FirstName\]/gi, lead.firstName);
+        draft.body = sanitizeDraftBody(
+          draft.body.replace(/\[FirstName\]/gi, lead.firstName)
+        );
         if (!draft.personalizationNotes) {
           draft.personalizationNotes =
             research.opener_signal ?? research.talkingPoints[0] ?? "Research-led angle.";
@@ -440,7 +506,9 @@ function buildDraftResult(
   const mainSigned = appendSig
     ? appendSignaturePlain(draft.body, senderDisplayName, signoffPhrase)
     : draft.body.trimEnd();
-  const bodyWithCompliance = `${mainSigned.trimEnd()}${suffix}`;
+  const bodyWithCompliance = suffix
+    ? `${mainSigned.trimEnd()}${suffix.startsWith("\n\n") ? suffix : `\n\n${suffix}`}`
+    : mainSigned.trimEnd();
   const withFooter: DraftMessage = { ...draft, body: bodyWithCompliance };
   return {
     draftMessage: withFooter,
@@ -449,8 +517,7 @@ function buildDraftResult(
         `Draft for ${firstName}:\n\n` +
           `**Subject:** ${withFooter.subject}\n\n` +
           `${withFooter.body}\n\n` +
-          `---\n_Angle: ${withFooter.personalizationNotes}_\n\n` +
-          `Awaiting your call, sir. Approve, edit, or reject.`
+          `Approve, edit, or reject.`
       ),
     ],
   };

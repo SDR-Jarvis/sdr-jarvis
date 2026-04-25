@@ -15,6 +15,14 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+function logPipelineFailure(step: string, err: unknown) {
+  console.error("[Pipeline] Fetch failed:", {
+    error: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined,
+    step,
+  });
+}
+
 /**
  * POST /api/agents/run
  * Body: { campaignId: string, dryRun?: boolean }
@@ -144,17 +152,24 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const { stream: graphStream } = await startCampaignRun({
-          userId: user.id,
-          campaignId,
-          leads,
-          threadId,
-          recursionLimit,
-          dryRun: dryRun === true,
-          complianceEmailSuffix,
-          senderDisplayName,
-          senderSignoff,
-        });
+        let graphStream: Awaited<ReturnType<typeof startCampaignRun>>["stream"];
+        try {
+          const result = await startCampaignRun({
+            userId: user.id,
+            campaignId,
+            leads,
+            threadId,
+            recursionLimit,
+            dryRun: dryRun === true,
+            complianceEmailSuffix,
+            senderDisplayName,
+            senderSignoff,
+          });
+          graphStream = result.stream;
+        } catch (err) {
+          logPipelineFailure("startCampaignRun", err);
+          throw err;
+        }
 
         for await (const event of graphStream) {
           const payload = JSON.stringify({
@@ -206,9 +221,13 @@ export async function POST(req: NextRequest) {
                   .single();
                 const base =
                   process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
-                void sendSlackNotification(
-                  `🟡 SDR Jarvis — ${n} email(s) ready for approval\nCampaign: ${camp?.name ?? "Campaign"}\n→ Review: ${base}/dashboard/approvals`
-                );
+                try {
+                  await sendSlackNotification(
+                    `🟡 SDR Jarvis — ${n} email(s) ready for approval\nCampaign: ${camp?.name ?? "Campaign"}\n→ Review: ${base}/dashboard/approvals`
+                  );
+                } catch (err) {
+                  logPipelineFailure("sendSlackNotification", err);
+                }
                 await service.from("audit_log").insert({
                   user_id: user.id,
                   action: "slack_pipeline_approvals",
