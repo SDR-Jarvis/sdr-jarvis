@@ -1,9 +1,9 @@
 /** Single source for founder-facing positioning (UI only). */
 
-export const PRODUCT_TAGLINE = "The fastest way for a founder to start outbound";
+export const PRODUCT_TAGLINE = "AI outbound for AI and SaaS founders";
 
 export const PRODUCT_SUBLINE =
-  "AI researches leads, writes personalized emails, and lets you approve before sending.";
+  "Built specifically for B2B AI and SaaS founders sending their first 50–200 cold emails. Personalized drafts, your approval, your sender — no blast tools, no SDR team needed.";
 
 export const IMPORT_INVITE =
   "Already have leads? Bring them in — we'll write the emails.";

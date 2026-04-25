@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SDR Jarvis — AI outbound for solo founders",
+  title: "SDR Jarvis — AI outbound for AI and SaaS founders",
   description:
-    "AI-powered outbound for solo founders. Your first sales hire — minus the salary. Jarvis researches each lead and drafts email; you approve every send.",
+    "Built for B2B AI and SaaS founders. Jarvis researches leads and drafts email; you approve every send — no blast tools, no SDR team needed.",
 };
 
 export const viewport: Viewport = {

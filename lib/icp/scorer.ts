@@ -86,6 +86,73 @@ export function scoreLead(lead: RawLead, signals: ICPSignals): ScoredLead {
     score -= 40;
   }
 
+  // Apollo leads come pre-vetted by Apollo's data quality
+  if (lead.source === "apollo") {
+    score += 20; // base credibility boost
+    if (lead.title) score += 10; // verified title at a real company
+    if (lead.email) score += 10; // can contact
+  }
+
+  // Hard filter: must be AI or SaaS adjacent
+  const searchTextLower = searchText;
+
+  const aiSaasIndicators = [
+    "saas",
+    "software",
+    "platform",
+    "api",
+    "b2b",
+    "ai",
+    "ml",
+    "llm",
+    "data",
+    "cloud",
+    "devtools",
+    "developer tools",
+    "infrastructure",
+    "analytics",
+    "automation",
+    "workflow",
+    "dashboard",
+    "engine",
+    "tool",
+    "app",
+  ];
+
+  const offTopicIndicators = [
+    "agency",
+    "consulting",
+    "consultancy",
+    "marketing agency",
+    "e-commerce store",
+    "shopify store",
+    "dropshipping",
+    "real estate",
+    "restaurant",
+    "retail store",
+    "salon",
+    "fitness",
+    "coach",
+    "coaching",
+    "influencer",
+  ];
+
+  const looksAISaas = aiSaasIndicators.some((t) => searchTextLower.includes(t));
+  const looksOffTopic = offTopicIndicators.some((t) => searchTextLower.includes(t));
+
+  if (looksOffTopic && !looksAISaas) {
+    return {
+      ...lead,
+      icp_score: 5,
+      icp_label: "weak" as const,
+      icp_match_reason: "Outside AI/SaaS scope",
+    };
+  }
+
+  if (!looksAISaas && lead.source !== "apollo") {
+    score -= 15;
+  }
+
   score = Math.max(0, Math.min(100, score));
 
   const icp_label: ScoredLead["icp_label"] =

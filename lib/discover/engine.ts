@@ -281,17 +281,52 @@ async function discoverProductHunt(signals: ICPSignals): Promise<RawLead[]> {
 }
 
 async function discoverApollo(
-  _signals: ICPSignals,
+  signals: ICPSignals,
   apiKey: string
 ): Promise<RawLead[]> {
-  // Apollo People Search uses AND across filters — keep this body minimal for volume.
+  // Map user's ICP industries to Apollo keywords, but always include AI/SaaS as core scope.
+  const userIndustries = signals.industries.slice(0, 3);
+
+  const aiSaasCoreTerms = ["saas", "software", "b2b"];
+  const aiTerms = ["artificial intelligence", "machine learning"];
+
+  const industries = [
+    ...new Set([
+      ...aiSaasCoreTerms,
+      ...userIndustries,
+      ...(signals.industries.some((i) =>
+        ["ai", "ml", "llm", "genai"].some((t) => i.toLowerCase().includes(t))
+      )
+        ? aiTerms
+        : []),
+    ]),
+  ].slice(0, 6);
+
+  const titles = signals.roles.length
+    ? signals.roles.slice(0, 6)
+    : ["founder", "co-founder", "ceo", "cto"];
+
+  const sizeMap: Record<string, string[]> = {
+    solo: ["1,1"],
+    small: ["1,10"],
+    any: ["1,50"],
+  };
+  const sizeRange = sizeMap[signals.company_size] ?? ["1,50"];
+
   const body = {
     api_key: apiKey,
-    person_titles: ["founder", "co-founder", "ceo", "cto"],
-    q_organization_keyword_tags: ["saas", "software"],
-    organization_num_employees_ranges: ["1,50"],
+    person_titles: titles,
+    q_organization_keyword_tags: industries,
+    organization_num_employees_ranges: sizeRange,
     per_page: 25,
+    reveal_personal_emails: true,
   };
+
+  console.log("[Apollo] Query built for AI/SaaS scope:", {
+    titles,
+    industries,
+    sizeRange,
+  });
 
   const response = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
     method: "POST",

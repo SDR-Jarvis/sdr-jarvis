@@ -48,17 +48,17 @@ const LOADING_STEPS = [
 ];
 
 const ICP_PLACEHOLDERS = [
-  "e.g. B2B SaaS founders who recently launched",
-  "e.g. solo founders building AI tools",
   "e.g. seed-stage AI startup founders",
-  "e.g. technical founders building API-first products",
+  "e.g. B2B SaaS founders who recently launched",
+  "e.g. founders building developer tools or APIs",
+  "e.g. technical founders at AI infrastructure startups",
 ] as const;
 
 const EXAMPLE_ICPS = [
-  "B2B SaaS founders who recently launched",
-  "Solo founders building AI tools",
   "Seed-stage AI startup founders",
-  "Technical founders building API-first products",
+  "B2B SaaS founders who recently launched",
+  "Founders building developer tools or APIs",
+  "Technical founders at AI infrastructure startups",
 ] as const;
 
 export default function DiscoverLeadsPage() {
