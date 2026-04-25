@@ -11,7 +11,7 @@ export async function userHasAdminAccess(
 ): Promise<boolean> {
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_admin")
+    .select("*")
     .eq("id", userId)
     .single();
 

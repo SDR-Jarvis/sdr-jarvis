@@ -95,11 +95,14 @@ function SettingsContent() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", user.id)
         .single();
+      if (error) {
+        console.error("[Profile Read] Error:", error.message);
+      }
 
       if (user?.email) setLoginEmail(user.email);
 
@@ -1079,11 +1082,14 @@ function DomainSetupGuide() {
         setLoading(false);
         return;
       }
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from("profiles")
-        .select("sending_domain, wants_domain_buy_guide")
+        .select("*")
         .eq("id", user.id)
         .single();
+      if (error) {
+        console.error("[Profile Read] Error:", error.message);
+      }
       const row = profile as {
         sending_domain?: string | null;
         wants_domain_buy_guide?: boolean | null;

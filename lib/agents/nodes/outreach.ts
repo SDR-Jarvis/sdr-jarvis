@@ -199,7 +199,7 @@ export async function outreachNode(
       const supabase = createServiceClient();
       const { data: profile } = await supabase
         .from("profiles")
-        .select("full_name, company_name, role, icp_description, tone_preferences")
+        .select("*")
         .eq("id", state.userId)
         .single();
 

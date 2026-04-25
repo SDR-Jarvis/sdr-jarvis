@@ -133,7 +133,7 @@ export function OnboardingChecklist() {
         await Promise.all([
         supabase
           .from("profiles")
-          .select("full_name, company_name, role, icp_description, sending_mode, compliance_opt_out_line, compliance_postal_address, email_opt_out_footer, postal_address")
+          .select("*")
           .eq("id", user.id)
           .single(),
         supabase
@@ -165,6 +165,9 @@ export function OnboardingChecklist() {
           .neq("status", "pending"),
       ]);
 
+      if (profileRes.error) {
+        console.error("[Profile Read] Error:", profileRes.error.message);
+      }
       const profile = profileRes.data;
       const dismissed = localStorage.getItem("jarvis_domain_done") === "1";
       setDomainDismissed(dismissed);

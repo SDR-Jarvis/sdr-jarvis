@@ -34,7 +34,7 @@ export default async function AdminPage() {
     repliesRes,
     recentUsersRes,
   ] = await Promise.all([
-    supabase.from("profiles").select("id", { count: "exact", head: true }),
+    supabase.from("profiles").select("*", { count: "exact", head: true }),
     supabase.from("campaigns").select("id", { count: "exact", head: true }),
     supabase.from("leads").select("id", { count: "exact", head: true }),
     supabase.from("interactions").select("id, status", { count: "exact" }).eq("status", "sent"),
@@ -43,7 +43,7 @@ export default async function AdminPage() {
     supabase.from("interactions").select("id", { count: "exact", head: true }).in("status", ["replied", "qualified"]),
     supabase
       .from("profiles")
-      .select("id, full_name, company_name, created_at")
+      .select("*")
       .order("created_at", { ascending: false })
       .limit(20),
   ]);

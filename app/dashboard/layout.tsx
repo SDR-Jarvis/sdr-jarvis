@@ -45,11 +45,14 @@ export default function DashboardLayout({
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return;
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from("profiles")
-        .select("is_admin")
+        .select("*")
         .eq("id", user.id)
         .single();
+      if (error) {
+        console.error("[Profile Read] Error:", error.message);
+      }
       setIsAdmin(profile?.is_admin === true);
     });
   }, []);
