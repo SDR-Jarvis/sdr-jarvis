@@ -7,6 +7,7 @@ import type { ICPSignals } from "@/lib/icp/parser";
 import { hashIcpSignalsSha256 } from "@/lib/icp/hash";
 
 export interface RawLead {
+  apollo_id?: string | null;
   name: string | null;
   /** GitHub login (or similar) when display name is missing */
   username?: string | null;
@@ -20,6 +21,7 @@ export interface RawLead {
   icp_label: "hot" | "maybe" | "weak";
   icp_match_reason: string;
   icp_score?: number;
+  can_be_enriched?: boolean;
 }
 
 const HOUR_MS = 3600_000;
@@ -293,20 +295,24 @@ async function enrichApolloEmail(
         "X-Api-Key": apiKey,
       },
       body: JSON.stringify({
+        id: person.id,
         first_name: person.first_name,
-        last_name: person.last_name,
         organization_name: org.name,
-        domain: org.website_url,
         reveal_personal_emails: true,
       }),
     });
     if (!response.ok) {
-      console.error("[Apollo Enrich] Failed:", response.status);
+      const errorText = await response.text();
+      console.error("[Apollo Enrich] Failed:", response.status, errorText);
       return null;
     }
     const data = (await response.json()) as {
-      person?: { email?: string | null };
+      person?: Record<string, unknown> & { email?: string | null };
     };
+    console.log(
+      "[Apollo Enrich] Person match response keys:",
+      Object.keys(data.person ?? {})
+    );
     return data.person?.email ?? null;
   } catch (err) {
     console.error("[Apollo Enrich] Exception:", err);
@@ -403,11 +409,11 @@ async function discoverApollo(
   const candidatesForEnrichment = people
     .filter((p) => {
       const org = (p.organization as Record<string, unknown> | undefined) ?? {};
-      const orgName =
-        (typeof org.name === "string" && org.name) ||
-        (typeof p.organization_name === "string" && p.organization_name) ||
-        "";
-      return !!((p.first_name || p.name) && (p.last_name || p.name) && orgName);
+      const hasId = typeof p.id === "string" && p.id.length > 0;
+      const hasFirst = typeof p.first_name === "string" && p.first_name.length > 0;
+      const hasOrg = typeof org.name === "string" && org.name.length > 0;
+      const hasEmailFlag = p.has_email === true;
+      return hasId && hasFirst && hasOrg && hasEmailFlag;
     })
     .slice(0, 5);
 
@@ -420,16 +426,9 @@ async function discoverApollo(
   const enrichedMap = new Map<string, string>();
   candidatesForEnrichment.forEach((p, i) => {
     const result = enrichedEmails[i];
-    const org = (p.organization as Record<string, unknown> | undefined) ?? {};
-    const companyName =
-      (typeof org.name === "string" ? org.name : "") ||
-      (typeof p.organization_name === "string" ? p.organization_name : "");
-    const firstName =
-      (typeof p.first_name === "string" ? p.first_name : "") ||
-      (typeof p.name === "string" ? p.name : "");
-    if (result?.status === "fulfilled" && result.value) {
-      const key = `${firstName}_${companyName}`;
-      enrichedMap.set(key, result.value);
+    const apolloId = typeof p.id === "string" ? p.id : "";
+    if (apolloId && result?.status === "fulfilled" && result.value) {
+      enrichedMap.set(apolloId, result.value);
     }
   });
 
@@ -443,35 +442,30 @@ async function discoverApollo(
   // Map ALL people to leads, with enriched email if available
   const leads = people.map((p) => {
     const org = (p.organization as Record<string, unknown> | undefined) ?? {};
-    const rawName = typeof p.name === "string" ? p.name : "";
-    const firstName =
-      (typeof p.first_name === "string" && p.first_name) ||
-      (rawName ? rawName.split(" ")[0] : "") ||
-      "";
+    const firstName = (typeof p.first_name === "string" ? p.first_name : null) ?? null;
     const lastName =
-      (typeof p.last_name === "string" && p.last_name) ||
-      (rawName ? rawName.split(" ").slice(1).join(" ") : "") ||
-      "";
+      (typeof p.last_name === "string" ? p.last_name : null) ??
+      (typeof p.last_name_obfuscated === "string" ? p.last_name_obfuscated : null) ??
+      null;
+    const rawName = typeof p.name === "string" ? p.name : "";
     const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || rawName || null;
-    const companyName =
-      (typeof org.name === "string" && org.name) ||
-      (typeof p.organization_name === "string" ? p.organization_name : null);
-
-    // Look up enriched email
-    const enrichKey = `${firstName}_${companyName ?? ""}`;
-    const enrichedEmail = enrichedMap.get(enrichKey);
+    const companyName = (typeof org.name === "string" ? org.name : null) ?? null;
+    const apolloId = typeof p.id === "string" ? p.id : null;
+    const enrichedEmail = apolloId ? enrichedMap.get(apolloId) : undefined;
 
     return {
+      apollo_id: apolloId,
       name: fullName,
-      email: enrichedEmail ?? ((p.email as string) ?? null),
+      email: enrichedEmail ?? null,
       title: (p.title as string) ?? null,
-      company: companyName ?? null,
-      bio: (p.headline as string) ?? null,
+      company: companyName,
+      bio: (p.title as string) ?? null,
       url: (p.linkedin_url as string) ?? null,
       source: "apollo" as const,
       raw_score: 0,
       icp_label: "maybe" as const,
       icp_match_reason: "",
+      can_be_enriched: p.has_email === true,
     } satisfies RawLead;
   });
 

@@ -54,6 +54,13 @@ function textHaystack(lead: ScoredLead, companyNorm: string): string {
  * GitHub-only leads may lack company; we treat missing company as "Independent Founder" for checks only.
  */
 export function isValidLead(lead: ScoredLead): boolean {
+  if (lead.source === "apollo") {
+    const hasName = (lead.name ?? "").trim().length > 0;
+    const hasCompany = (lead.company ?? "").trim().length > 0;
+    if (!hasName || !hasCompany) return false;
+    return true;
+  }
+
   const min = getMinLeadScore();
   const score = lead.icp_score ?? 0;
   if (score < min) return false;
