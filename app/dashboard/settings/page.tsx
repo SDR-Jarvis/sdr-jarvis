@@ -117,12 +117,26 @@ function SettingsContent() {
         setHumor(tone.humor !== false);
         setSignoff((tone.signoff as string) ?? "Best");
         const ext = profile as Record<string, unknown>;
-        if (typeof ext.email_opt_out_footer === "string" && ext.email_opt_out_footer)
-          setOptOutFooter(ext.email_opt_out_footer);
-        if (typeof ext.postal_address === "string")
-          setPostalAddress(ext.postal_address);
-        if (typeof ext.warmup_daily_send_cap === "number")
-          setWarmupDailyCap(ext.warmup_daily_send_cap);
+        const optLine =
+          (typeof ext.compliance_opt_out_line === "string" &&
+            ext.compliance_opt_out_line.trim()) ||
+          (typeof ext.email_opt_out_footer === "string" &&
+            ext.email_opt_out_footer.trim());
+        if (optLine) setOptOutFooter(optLine);
+        const postal =
+          typeof ext.compliance_postal_address === "string"
+            ? ext.compliance_postal_address
+            : typeof ext.postal_address === "string"
+              ? ext.postal_address
+              : "";
+        setPostalAddress(postal);
+        const cap =
+          typeof ext.daily_send_cap === "number"
+            ? ext.daily_send_cap
+            : typeof ext.warmup_daily_send_cap === "number"
+              ? ext.warmup_daily_send_cap
+              : undefined;
+        if (typeof cap === "number") setWarmupDailyCap(cap);
         if (ext.sending_mode === "custom" || ext.sending_mode === "shared") {
           setSendingMode(ext.sending_mode as "shared" | "custom");
         } else {
@@ -167,8 +181,6 @@ function SettingsContent() {
         tone_preferences: { formality, humor, signoff },
         compliance_opt_out_line: optOutFooter.trim() || null,
         compliance_postal_address: postalAddress.trim() || null,
-        email_opt_out_footer: optOutFooter.trim() || null,
-        postal_address: postalAddress.trim() || null,
         onboarded: true,
         sending_mode: sendingMode,
       };
@@ -176,30 +188,11 @@ function SettingsContent() {
         profileUpdate.apollo_api_key = apolloApiKey.trim() || null;
       }
 
-      let { data: updatedRows, error } = await supabase
+      const { data: updatedRows, error } = await supabase
         .from("profiles")
         .update(profileUpdate)
         .eq("id", user.id)
         .select("id, full_name, company_name, role, icp_description");
-
-      if (error) {
-        const msg = String(error.message ?? "");
-        if (
-          msg.includes("compliance_opt_out_line") ||
-          msg.includes("compliance_postal_address")
-        ) {
-          const fallbackUpdate = {
-            ...profileUpdate,
-            compliance_opt_out_line: undefined,
-            compliance_postal_address: undefined,
-          } as Record<string, unknown>;
-          ({ data: updatedRows, error } = await supabase
-            .from("profiles")
-            .update(fallbackUpdate)
-            .eq("id", user.id)
-            .select("id, full_name, company_name, role, icp_description"));
-        }
-      }
 
       if (error) {
         console.error("[Profile Save] FAILED:", error);
@@ -260,35 +253,14 @@ function SettingsContent() {
       const complianceUpdate: Record<string, unknown> = {
         compliance_opt_out_line: line,
         compliance_postal_address: postalAddress.trim() || null,
-        email_opt_out_footer: line,
-        postal_address: postalAddress.trim() || null,
         warmup_daily_send_cap: Math.min(500, Math.max(1, warmupDailyCap)),
       };
 
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from("profiles")
         .update(complianceUpdate)
         .eq("id", user.id)
         .select("id");
-
-      if (error) {
-        const msg = String(error.message ?? "");
-        if (
-          msg.includes("compliance_opt_out_line") ||
-          msg.includes("compliance_postal_address")
-        ) {
-          const fallbackUpdate = {
-            ...complianceUpdate,
-            compliance_opt_out_line: undefined,
-            compliance_postal_address: undefined,
-          } as Record<string, unknown>;
-          ({ data, error } = await supabase
-            .from("profiles")
-            .update(fallbackUpdate)
-            .eq("id", user.id)
-            .select("id"));
-        }
-      }
 
       if (error) {
         console.error("[Profile Save] Compliance FAILED:", error);

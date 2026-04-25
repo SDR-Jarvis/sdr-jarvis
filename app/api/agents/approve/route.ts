@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
   const { data: profileRow } = await supabase
     .from("profiles")
     .select(
-      "email_opt_out_footer, postal_address, warmup_daily_send_cap, full_name, sending_mode, sending_domain"
+      "compliance_opt_out_line, compliance_postal_address, warmup_daily_send_cap, full_name, sending_mode, sending_domain"
     )
     .eq("id", user.id)
     .single();
@@ -172,12 +172,13 @@ export async function POST(req: NextRequest) {
     ? `${mainSigned.trimEnd()}${complianceBlock}`
     : mainSigned;
 
+  const extCompliance = profileRow as {
+    compliance_opt_out_line?: string | null;
+    compliance_postal_address?: string | null;
+  } | null;
   const bodyToSend = ensureComplianceInBody(mergedBody, {
-    optOutLine:
-      (profileRow as { email_opt_out_footer?: string } | null)
-        ?.email_opt_out_footer ?? "",
-    postalAddress: (profileRow as { postal_address?: string | null } | null)
-      ?.postal_address,
+    optOutLine: extCompliance?.compliance_opt_out_line?.trim() ?? "",
+    postalAddress: extCompliance?.compliance_postal_address ?? null,
   });
 
   logger.step("approval", `Sending approved email to ${lead.email}`);

@@ -97,7 +97,9 @@ export async function POST(req: NextRequest) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("email_opt_out_footer, postal_address, full_name, tone_preferences")
+    .select(
+      "compliance_opt_out_line, compliance_postal_address, full_name, tone_preferences"
+    )
     .eq("id", user.id)
     .single();
 
@@ -112,13 +114,13 @@ export async function POST(req: NextRequest) {
     (profile as { full_name?: string | null } | null)?.full_name
   );
 
+  const ext = profile as {
+    compliance_opt_out_line?: string | null;
+    compliance_postal_address?: string | null;
+  } | null;
   const complianceEmailSuffix = buildComplianceEmailSuffix({
-    optOutLine:
-      (profile as { email_opt_out_footer?: string | null } | null)
-        ?.email_opt_out_footer ?? "",
-    postalAddress:
-      (profile as { postal_address?: string | null } | null)?.postal_address ??
-      null,
+    optOutLine: ext?.compliance_opt_out_line?.trim() ?? "",
+    postalAddress: ext?.compliance_postal_address ?? null,
   });
 
   const threadId = crypto.randomUUID();

@@ -180,8 +180,8 @@ export async function GET(req: NextRequest) {
       string,
       {
         full_name: string | null;
-        email_opt_out_footer: string;
-        postal_address: string | null;
+        optOutLine: string;
+        postalAddress: string | null;
       }
     >();
 
@@ -190,17 +190,17 @@ export async function GET(req: NextRequest) {
       if (hit) return hit;
       const { data } = await supabase
         .from("profiles")
-        .select("full_name, email_opt_out_footer, postal_address")
+        .select("full_name, compliance_opt_out_line, compliance_postal_address")
         .eq("id", userId)
         .single();
+      const ext = data as {
+        compliance_opt_out_line?: string | null;
+        compliance_postal_address?: string | null;
+      } | null;
       const row = {
         full_name: data?.full_name ?? null,
-        email_opt_out_footer:
-          (data as { email_opt_out_footer?: string } | null)
-            ?.email_opt_out_footer ?? "",
-        postal_address:
-          (data as { postal_address?: string | null } | null)?.postal_address ??
-          null,
+        optOutLine: ext?.compliance_opt_out_line?.trim() ?? "",
+        postalAddress: ext?.compliance_postal_address ?? null,
       };
       profileCache.set(userId, row);
       return row;
@@ -254,8 +254,8 @@ export async function GET(req: NextRequest) {
           resolveSenderName(prof.full_name)
         );
         const fullBody = `${signed.trimEnd()}${buildComplianceEmailSuffix({
-          optOutLine: prof.email_opt_out_footer,
-          postalAddress: prof.postal_address,
+          optOutLine: prof.optOutLine,
+          postalAddress: prof.postalAddress,
         })}`;
 
         const { data: interaction } = await supabase
