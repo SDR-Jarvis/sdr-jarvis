@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Loader2,
@@ -61,6 +62,7 @@ const EXAMPLE_ICPS = [
 
 export default function DiscoverLeadsPage() {
   const supabase = createClient();
+  const router = useRouter();
 
   const [icpDescription, setIcpDescription] = useState("");
   const [icpPlaceholderIndex, setIcpPlaceholderIndex] = useState(0);
@@ -76,7 +78,7 @@ export default function DiscoverLeadsPage() {
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([]);
   const [campaignId, setCampaignId] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [importing, setImporting] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [discoveryMeta, setDiscoveryMeta] = useState<{
     totalFound: number;
     totalFiltered: number;
@@ -246,31 +248,30 @@ export default function DiscoverLeadsPage() {
 
   const selectedWithEmail = Array.from(selected).filter((i) => hasValidEmail(i));
 
-  async function importRows(indices: number[]) {
-    const withEmail = indices.filter((i) => hasValidEmail(i));
+  async function handleAddToCampaign(leadsToAdd: IcpDiscoveredLead[]) {
+    console.log("[Add Click] Triggered with", leadsToAdd.length, "leads");
+    const selectedCampaignId = campaignId.trim();
+    console.log("[Add Click] Selected campaign:", selectedCampaignId);
 
-    if (!campaignId.trim()) {
-      const msg = "Pick a campaign first or create a new one.";
-      setImportResult(msg);
-      setToast({ type: "error", msg });
+    if (!selectedCampaignId) {
+      alert("Please select a campaign first");
+      return;
+    }
+    if (!leadsToAdd || leadsToAdd.length === 0) {
+      alert("Please select at least one lead");
       return;
     }
 
-    if (withEmail.length === 0) {
-      setImportResult("Select leads with a valid email.");
-      return;
-    }
-
-    setImporting(true);
+    setIsAdding(true);
     setImportResult(null);
-    setToast(null);
 
-    const leadsPayload = withEmail.map((i) => {
-      const lead = leads[i];
+    const payload = leadsToAdd.map((lead, i) => {
+      const idx = leads.findIndex((l) => l === lead);
+      const email = idx >= 0 ? emailAt(idx) : lead.email ?? "";
       return {
         name: lead.name,
         username: lead.username ?? null,
-        email: emailAt(i),
+        email,
         title: lead.title,
         company: lead.company,
         bio: lead.bio,
@@ -283,41 +284,37 @@ export default function DiscoverLeadsPage() {
     });
 
     try {
-      const res = await fetch("/api/leads/add-from-discovery", {
+      const response = await fetch("/api/leads/add-from-discovery", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaign_id: campaignId, leads: leadsPayload }),
+        body: JSON.stringify({
+          campaign_id: selectedCampaignId,
+          leads: payload,
+        }),
       });
-      const json = (await res.json()) as {
+
+      const result = (await response.json()) as {
         error?: string;
+        added?: number;
         count?: number;
         campaign_name?: string;
-        campaign_id?: string;
       };
+      console.log("[Add Click] Response:", response.status, result);
 
-      if (!res.ok) {
-        const errMsg = json.error ?? "Could not add leads.";
-        setImportResult(errMsg);
-        setToast({ type: "error", msg: errMsg });
+      if (!response.ok) {
+        alert(result.error ?? "Failed to add leads");
         return;
       }
 
-      const n = json.count ?? 0;
-      const cname = json.campaign_name ?? "your campaign";
-      const successMsg = `${n} lead${n === 1 ? "" : "s"} added to ${cname}.`;
-      setToast({ type: "success", msg: successMsg });
-      let msg = `${successMsg} Run the pipeline when you're ready.`;
-      if (n < 5) {
-        msg += `\n\nWe couldn't find strong matches yet.\nTry broadening your description.\n\nExample ICP: "SaaS founders building developer tools"`;
-      }
-      setImportResult(msg);
+      const added = result.added ?? result.count ?? 0;
+      alert(`Added ${added} leads to ${result.campaign_name ?? "campaign"}`);
       setSelected(new Set());
-    } catch {
-      const errMsg = "Network error. Try again.";
-      setImportResult(errMsg);
-      setToast({ type: "error", msg: errMsg });
+      router.push(`/dashboard/campaigns/${selectedCampaignId}`);
+    } catch (err) {
+      console.error("[Add Click] Error:", err);
+      alert("Something went wrong. Check console.");
     } finally {
-      setImporting(false);
+      setIsAdding(false);
     }
   }
 
@@ -609,23 +606,35 @@ export default function DiscoverLeadsPage() {
             <button
               type="button"
               disabled={
-                importing ||
+                isAdding ||
                 !campaignId.trim() ||
                 !highFitIndices.some((i) => hasValidEmail(i))
               }
-              onClick={() => void importRows(highFitIndices.filter((i) => hasValidEmail(i)))}
+              onClick={() =>
+                void handleAddToCampaign(
+                  highFitIndices
+                    .filter((i) => hasValidEmail(i))
+                    .map((i) => leads[i]!)
+                )
+              }
               className="jarvis-btn-primary text-xs"
             >
-              {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              {isAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               Add all high-fit with email
             </button>
             <button
               type="button"
-              disabled={importing || selectedWithEmail.length === 0 || !campaignId.trim()}
-              onClick={() => void importRows(Array.from(selected))}
+              disabled={isAdding || selectedWithEmail.length === 0 || !campaignId.trim()}
+              onClick={() =>
+                void handleAddToCampaign(
+                  Array.from(selected)
+                    .filter((i) => hasValidEmail(i))
+                    .map((i) => leads[i]!)
+                )
+              }
               className="jarvis-btn-ghost text-xs"
             >
-              Add selected ({selectedWithEmail.length} with email)
+              {isAdding ? "Adding..." : `Add selected (${selectedWithEmail.length})`}
             </button>
           </div>
 

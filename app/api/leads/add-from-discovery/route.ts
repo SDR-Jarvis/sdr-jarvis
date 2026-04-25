@@ -42,20 +42,27 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (authError || !user) {
+    console.error("[Add Leads API] Auth failed:", authError);
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
   let body: { campaign_id?: unknown; leads?: unknown };
   try {
     body = (await req.json()) as { campaign_id?: unknown; leads?: unknown };
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
   }
 
   const campaign_id = typeof body.campaign_id === "string" ? body.campaign_id.trim() : "";
   const rawLeads = Array.isArray(body.leads) ? body.leads : [];
+  console.log("[Add Leads API] Request:", {
+    campaign_id,
+    leadCount: rawLeads.length,
+    userId: user.id,
+  });
   if (!campaign_id || rawLeads.length === 0) {
     return NextResponse.json(
       { error: "campaign_id and a non-empty leads array are required" },
@@ -71,8 +78,8 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (campErr || !campaign) {
-    console.error("[add-from-discovery] Campaign missing or denied:", campErr);
-    return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    console.error("[Add Leads API] Campaign lookup failed:", campErr);
+    return NextResponse.json({ error: "Campaign not found or not yours" }, { status: 404 });
   }
 
   const rows: Record<string, unknown>[] = [];
@@ -148,24 +155,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  console.log("[Add Leads API] Inserting:", rows.length, "leads");
+
   const { data: inserted, error: insertErr } = await supabase
     .from("leads")
     .insert(rows)
     .select("id");
 
   if (insertErr) {
-    console.error("[add-from-discovery] Insert FAILED:", insertErr);
-    return NextResponse.json({ error: insertErr.message }, { status: 500 });
+    console.error("[Add Leads API] Insert failed:", insertErr);
+    return NextResponse.json({ error: `Insert failed: ${insertErr.message}` }, { status: 500 });
   }
 
   const n = inserted?.length ?? 0;
-  console.log("[add-from-discovery] SUCCESS:", {
-    campaign_id: campaign.id,
-    inserted: n,
-  });
+  console.log("[Add Leads API] Success:", n, "leads added");
 
   return NextResponse.json({
+    success: true,
     ok: true,
+    added: n,
     count: n,
     campaign_id: campaign.id,
     campaign_name: campaign.name,

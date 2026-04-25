@@ -133,7 +133,7 @@ export function OnboardingChecklist() {
         await Promise.all([
         supabase
           .from("profiles")
-          .select("full_name, company_name, icp_description, postal_address, sending_mode")
+          .select("full_name, company_name, role, icp_description, sending_mode, compliance_opt_out_line, compliance_postal_address, email_opt_out_footer, postal_address")
           .eq("id", user.id)
           .single(),
         supabase
@@ -173,18 +173,32 @@ export function OnboardingChecklist() {
         "custom";
       const hasDomain =
         dismissed || (sentRes.count ?? 0) > 0 || sendingShared;
-      const postalOk =
-        typeof profile?.postal_address === "string" &&
-        profile.postal_address.trim().length >= 8;
+      const complianceOptOut =
+        (profile as { compliance_opt_out_line?: string | null; email_opt_out_footer?: string | null } | null)
+          ?.compliance_opt_out_line ??
+        (profile as { email_opt_out_footer?: string | null } | null)?.email_opt_out_footer ??
+        "";
+      const compliancePostal =
+        (profile as { compliance_postal_address?: string | null; postal_address?: string | null } | null)
+          ?.compliance_postal_address ??
+        (profile as { postal_address?: string | null } | null)?.postal_address ??
+        "";
+      const isProfileComplete = Boolean(
+        profile?.full_name && (profile?.company_name || (profile as { role?: string | null })?.role)
+      );
+      const isLegalComplete = Boolean(complianceOptOut && compliancePostal);
+      const isICPComplete = Boolean(
+        profile?.icp_description && profile.icp_description.trim().length > 10
+      );
       setData({
         hasTestEmail: (testEmailRes.count ?? 0) > 0,
-        hasProfile: !!(profile?.full_name && profile?.company_name),
-        hasIcp: !!profile?.icp_description,
+        hasProfile: isProfileComplete,
+        hasIcp: isICPComplete,
         hasCampaign: (campaignRes.count ?? 0) > 0,
         hasLeads: (leadsRes.count ?? 0) > 0,
         hasRun: (runsRes.count ?? 0) > 0,
         hasDomain,
-        hasCompliance: postalOk,
+        hasCompliance: isLegalComplete,
         hasReviewedDraft: (approvalsDoneRes.count ?? 0) > 0,
       });
     }

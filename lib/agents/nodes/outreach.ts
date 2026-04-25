@@ -6,85 +6,62 @@ import { createServiceClient } from "@/lib/supabase/server";
 import type { JarvisStateType, DraftMessage, ResearchData } from "../state";
 
 const OUTREACH_SYSTEM_PROMPT = `
-You are writing a cold email for a B2B SaaS founder
-reaching out to another technical founder or 
-decision-maker at a SaaS company.
+You are writing a cold email for a B2B AI/SaaS founder
+reaching out to another technical founder or decision-maker.
 
-HARD RULES — violating any of these is failure:
-1. Under 120 words total (not counting signature)
-2. No bullet points
-3. No bold text  
-4. No "Hope this finds you well" or any variant
-5. No "I came across your profile"
-6. No "Just floating this back up" or follow-up framing
-7. No "I believe this could" or "I think this might"
-   (weasel words — either it's relevant or it isn't)
-8. No aggressive CTA like "book a 30-min call"
-9. Subject line max 7 words, no clickbait
-
-EMAIL STRUCTURE (two parts, separated by one blank line):
+HARD RULES:
+1. Under 110 words total (excluding signature)
+2. No bullet points, no bold, no markdown
+3. Never use: "Hope this finds you well", "Just floating",
+   "I came across", "I believe", "I think this might"
+4. Subject line max 7 words
+5. No "schedule a 30-minute call" CTAs
+6. Two-part structure separated by ONE blank line
 
 PART 1 — WARM OPENER (2 sentences max):
-Reference the opener_signal from research data directly.
-Write it as an observation, not a compliment.
-BAD: "I was really impressed by your recent launch"
-GOOD: "Saw you shipped remote-write compatibility last 
-month — staying wire-compatible while solving cardinality 
-underneath is a cleaner migration path than most teams take."
+Reference {opener_signal} from research as an OBSERVATION,
+not a compliment. Show you actually paid attention to what
+they're building.
 
-The opener must make the reader think:
-"This person actually looked at what I'm building."
+BAD: "I was impressed by your recent launch"
+GOOD: "Saw you shipped {specific thing} last month —
+the approach of {specific decision} is cleaner than
+how most teams handle this."
 
-If confidence is low and fallback_used is true:
-Reference their company_differentiation instead.
-Still write it as an observation, not a compliment.
+If confidence is "low" or fallback_used is true:
+Reference {company_differentiation} instead, still as
+an observation.
 
-PART 2 — THE PITCH + CTA (3-4 sentences):
-Sentence 1: What the sender does. Plain language. 
-  No buzzwords. No "leverage AI to synergize."
-Sentence 2: Why it is specifically relevant to THIS person.
-  Reference their likely_pain_point from research.
-  Or reference their company stage/focus.
-Sentence 3 (optional): One concrete outcome or number
-  if the sender has proof. Skip if no proof exists.
-  Do not invent numbers.
-Sentence 4: Soft CTA. A genuine question.
-  "Worth a quick look?" or "Would this fit what 
-  you're building?" or "Open to a 10-min chat?"
-  NOT "Can we schedule time on your calendar?"
+PART 2 — PITCH + CTA (3 sentences max):
+Sentence 1: What sender does in plain language. No buzzwords.
+Sentence 2: Why it's relevant to THIS person specifically.
+Reference {likely_pain_point} or their stage.
+Sentence 3: Soft CTA — a real question.
+"Worth a quick look?" or "Open to a 10-min chat?"
 
 SIGN-OFF:
-First name only. Then the configured sign-off line.
+First name only. Then sender's configured sign-off.
 
-RESEARCH DATA:
+VARIABLES TO USE:
 opener_signal: {opener_signal}
-opener_type: {opener_type}
 company_differentiation: {company_differentiation}
 likely_pain_point: {likely_pain_point}
 confidence: {confidence}
 fallback_used: {fallback_used}
+sender_name: {sender_name}
+sender_company: {sender_company}
+product_description: {product_description}
+sign_off: {sign_off}
 
-SENDER CONTEXT:
-Name: {sender_name}
-Company: {sender_company}
-What they do: {product_description}
-ICP: {icp_description}
-Tone formality: {formality_level}
-Sign-off: {sign_off}
+LEAD: {lead_name}, {lead_title} at {lead_company}
 
-STYLE EXAMPLES (emails this sender approved without edits):
+PREVIOUS APPROVED EXAMPLES (match this voice):
 {approved_examples}
 
-LEAD CONTEXT:
-Name: {lead_name}
-Title: {lead_title}  
-Company: {lead_company}
-
-OUTPUT — JSON only, no markdown, no explanation:
+OUTPUT — JSON only, no markdown:
 {
   "subject": "...",
-  "body": "...",
-  "personalizationNotes": "One sentence: which signal drove the angle."
+  "body": "..."
 }
 `.trim();
 
@@ -358,7 +335,7 @@ export async function outreachNode(
 
     const wc = wordCount(draft.body);
     const sc = subjectWordCount(draft.subject);
-    if (wc > 120 || sc > 7) {
+    if (wc > 110 || sc > 7) {
       logger.warn(
         "outreach",
         `Draft length check (words: ${wc}, subject words: ${sc}) — requesting revision`
@@ -372,7 +349,7 @@ export async function outreachNode(
         },
         {
           role: "user",
-          content: `Revise: body must be under 120 words (currently ${wc}). Subject max 7 words (currently ${sc}). Same JSON shape with subject, body, personalizationNotes. No bullets, no bold.`,
+          content: `Revise: body must be under 110 words (currently ${wc}). Subject max 7 words (currently ${sc}). Same JSON shape with subject, body, personalizationNotes. No bullets, no bold.`,
         },
       ]);
 

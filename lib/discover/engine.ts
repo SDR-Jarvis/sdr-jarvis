@@ -280,6 +280,40 @@ async function discoverProductHunt(signals: ICPSignals): Promise<RawLead[]> {
   });
 }
 
+async function enrichApolloEmail(
+  person: Record<string, unknown>,
+  apiKey: string
+): Promise<string | null> {
+  try {
+    const org = (person.organization as Record<string, unknown> | undefined) ?? {};
+    const response = await fetch("https://api.apollo.io/api/v1/people/match", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": apiKey,
+      },
+      body: JSON.stringify({
+        first_name: person.first_name,
+        last_name: person.last_name,
+        organization_name: org.name,
+        domain: org.website_url,
+        reveal_personal_emails: true,
+      }),
+    });
+    if (!response.ok) {
+      console.error("[Apollo Enrich] Failed:", response.status);
+      return null;
+    }
+    const data = (await response.json()) as {
+      person?: { email?: string | null };
+    };
+    return data.person?.email ?? null;
+  } catch (err) {
+    console.error("[Apollo Enrich] Exception:", err);
+    return null;
+  }
+}
+
 async function discoverApollo(
   signals: ICPSignals,
   apiKey: string
@@ -354,32 +388,51 @@ async function discoverApollo(
     return [];
   }
 
-  return (data.people ?? []).map((p) => {
-    const org = p.organization as Record<string, unknown> | undefined;
-    const last =
-      (typeof p.last_name === "string" && p.last_name) ||
-      (typeof p.last_name_obfuscated === "string" && p.last_name_obfuscated) ||
-      "";
+  const people = data.people ?? [];
+  const peopleToEnrich = people
+    .filter((p) => {
+      const org = (p.organization as Record<string, unknown> | undefined) ?? {};
+      return !!(p.first_name && p.last_name && org.name);
+    })
+    .slice(0, 5);
+
+  console.log("[Apollo Enrich] Attempting:", peopleToEnrich.length);
+
+  const enriched = await Promise.allSettled(
+    peopleToEnrich.map((p) => enrichApolloEmail(p, apiKey))
+  );
+
+  const enrichedEmails = enriched.map((r) =>
+    r.status === "fulfilled" ? r.value : null
+  );
+
+  console.log(
+    "[Apollo Enrich] Emails found:",
+    enrichedEmails.filter(Boolean).length,
+    "of",
+    peopleToEnrich.length
+  );
+
+  const leads = peopleToEnrich.map((p, i) => {
+    const org = (p.organization as Record<string, unknown> | undefined) ?? {};
     const first = typeof p.first_name === "string" ? p.first_name : "";
-    const linkedin = typeof p.linkedin_url === "string" ? p.linkedin_url : "";
-    const slug =
-      linkedin.match(/linkedin\.com\/in\/([^/?#]+)/i)?.[1]?.replace(/-/g, " ") ?? "";
-    const name =
-      `${first} ${last}`.trim() ||
-      (slug ? slug.trim() : "") ||
-      "Prospect";
-    return emptyLead({
+    const last = typeof p.last_name === "string" ? p.last_name : "";
+    const name = [first, last].filter(Boolean).join(" ").trim() || null;
+    return {
       name,
-      username: null,
-      // People API Search does not return email/phone; enrichment is a separate call.
-      email: (p.email as string) ?? null,
+      email: enrichedEmails[i] ?? ((p.email as string) ?? null),
       title: (p.title as string) ?? null,
-      company: (org?.name as string) ?? null,
+      company: (org.name as string) ?? null,
       bio: null,
       url: (p.linkedin_url as string) ?? null,
-      source: "apollo",
-    });
+      source: "apollo" as const,
+      raw_score: 0,
+      icp_label: "maybe" as const,
+      icp_match_reason: "",
+    } satisfies RawLead;
   });
+
+  return leads;
 }
 
 export async function findLeads(

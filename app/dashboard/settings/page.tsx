@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   Save,
@@ -44,6 +44,7 @@ export default function SettingsPage() {
 
 function SettingsContent() {
   const supabase = createClient();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
@@ -161,6 +162,10 @@ function SettingsContent() {
         icp_description: icpDescription.trim() || null,
         timezone,
         tone_preferences: { formality, humor, signoff },
+        compliance_opt_out_line: optOutFooter.trim() || null,
+        compliance_postal_address: postalAddress.trim() || null,
+        email_opt_out_footer: optOutFooter.trim() || null,
+        postal_address: postalAddress.trim() || null,
         onboarded: true,
         sending_mode: sendingMode,
       };
@@ -168,11 +173,30 @@ function SettingsContent() {
         profileUpdate.apollo_api_key = apolloApiKey.trim() || null;
       }
 
-      const { data: updatedRows, error } = await supabase
+      let { data: updatedRows, error } = await supabase
         .from("profiles")
         .update(profileUpdate)
         .eq("id", user.id)
         .select("id, full_name, company_name, role, icp_description");
+
+      if (error) {
+        const msg = String(error.message ?? "");
+        if (
+          msg.includes("compliance_opt_out_line") ||
+          msg.includes("compliance_postal_address")
+        ) {
+          const fallbackUpdate = {
+            ...profileUpdate,
+            compliance_opt_out_line: undefined,
+            compliance_postal_address: undefined,
+          } as Record<string, unknown>;
+          ({ data: updatedRows, error } = await supabase
+            .from("profiles")
+            .update(fallbackUpdate)
+            .eq("id", user.id)
+            .select("id, full_name, company_name, role, icp_description"));
+        }
+      }
 
       if (error) {
         console.error("[Profile Save] FAILED:", error);
@@ -201,6 +225,7 @@ function SettingsContent() {
       } else {
         console.log("[Profile Save] SUCCESS:", updatedRows[0]);
       }
+      router.refresh();
 
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -229,15 +254,38 @@ function SettingsContent() {
         return;
       }
 
-      const { data, error } = await supabase
+      const complianceUpdate: Record<string, unknown> = {
+        compliance_opt_out_line: line,
+        compliance_postal_address: postalAddress.trim() || null,
+        email_opt_out_footer: line,
+        postal_address: postalAddress.trim() || null,
+        warmup_daily_send_cap: Math.min(500, Math.max(1, warmupDailyCap)),
+      };
+
+      let { data, error } = await supabase
         .from("profiles")
-        .update({
-          email_opt_out_footer: line,
-          postal_address: postalAddress.trim() || null,
-          warmup_daily_send_cap: Math.min(500, Math.max(1, warmupDailyCap)),
-        })
+        .update(complianceUpdate)
         .eq("id", user.id)
         .select("id");
+
+      if (error) {
+        const msg = String(error.message ?? "");
+        if (
+          msg.includes("compliance_opt_out_line") ||
+          msg.includes("compliance_postal_address")
+        ) {
+          const fallbackUpdate = {
+            ...complianceUpdate,
+            compliance_opt_out_line: undefined,
+            compliance_postal_address: undefined,
+          } as Record<string, unknown>;
+          ({ data, error } = await supabase
+            .from("profiles")
+            .update(fallbackUpdate)
+            .eq("id", user.id)
+            .select("id"));
+        }
+      }
 
       if (error) {
         console.error("[Profile Save] Compliance FAILED:", error);
@@ -252,6 +300,7 @@ function SettingsContent() {
       }
 
       console.log("[Profile Save] Compliance SUCCESS:", data[0]);
+      router.refresh();
       setSavedCompliance(true);
       setTimeout(() => setSavedCompliance(false), 3000);
     } finally {
