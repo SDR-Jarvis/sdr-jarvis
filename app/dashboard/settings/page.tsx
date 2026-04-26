@@ -62,6 +62,7 @@ function SettingsContent() {
   const [companyName, setCompanyName] = useState("");
   const [role, setRole] = useState("");
   const [icpDescription, setIcpDescription] = useState("");
+  const [productDescription, setProductDescription] = useState("");
   const [timezone, setTimezone] = useState("America/Los_Angeles");
   const [formality, setFormality] = useState("professional-casual");
   const [humor, setHumor] = useState(true);
@@ -111,11 +112,15 @@ function SettingsContent() {
         setCompanyName(profile.company_name ?? "");
         setRole(profile.role ?? "");
         setIcpDescription(profile.icp_description ?? "");
+        setProductDescription((profile as { product_description?: string | null }).product_description ?? "");
         setTimezone(profile.timezone ?? "America/Los_Angeles");
         const tone = (profile.tone_preferences ?? {}) as Record<string, unknown>;
         setFormality((tone.formality as string) ?? "professional-casual");
         setHumor(tone.humor !== false);
-        setSignoff((tone.signoff as string) ?? "Best");
+        setSignoff(
+          (tone.signoff as string) ??
+            (profile.full_name?.split(" ")[0] || "Best")
+        );
         const ext = profile as Record<string, unknown>;
         const optLine =
           (typeof ext.compliance_opt_out_line === "string" &&
@@ -177,6 +182,7 @@ function SettingsContent() {
         company_name: companyName.trim() || null,
         role: role.trim() || null,
         icp_description: icpDescription.trim() || null,
+        product_description: productDescription.trim() || null,
         timezone,
         tone_preferences: { formality, humor, signoff },
         compliance_opt_out_line: optOutFooter.trim() || null,
@@ -192,7 +198,7 @@ function SettingsContent() {
         .from("profiles")
         .update(profileUpdate)
         .eq("id", user.id)
-        .select("id, full_name, company_name, role, icp_description");
+        .select("id, full_name, company_name, role, icp_description, product_description");
 
       if (error) {
         console.error("[Profile Save] FAILED:", error);
@@ -480,6 +486,9 @@ function SettingsContent() {
               <User className="h-4 w-4" />
               Profile
             </h2>
+            <p className="text-sm text-jarvis-muted">
+              We pre-filled your name and company from your sign-up. Edit anything that&apos;s wrong.
+            </p>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -546,12 +555,12 @@ function SettingsContent() {
           <div className="jarvis-card space-y-4">
             <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-jarvis-muted">
               <Building2 className="h-4 w-4" />
-              Ideal Customer Profile
+              Update your ideal customer profile
             </h2>
 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">
-                Describe your ideal customer
+                Ideal customer profile (ICP)
               </label>
               <textarea
                 value={icpDescription}
@@ -561,8 +570,27 @@ function SettingsContent() {
                 className="jarvis-input resize-none"
               />
               <p className="mt-1 text-xs text-jarvis-muted/50">
-                Jarvis uses this to score leads and personalize outreach angles.
+                You set this during onboarding. Update it anytime - Jarvis will use the new ICP for future discovery runs.
               </p>
+            </div>
+          </div>
+
+          <div className="jarvis-card space-y-4">
+            <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-jarvis-muted">
+              <MessageSquare className="h-4 w-4" />
+              Product positioning
+            </h2>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-jarvis-muted">
+                What your product does
+              </label>
+              <textarea
+                value={productDescription}
+                onChange={(e) => setProductDescription(e.target.value)}
+                placeholder="One sentence is enough. Jarvis uses this for discovery and messaging context."
+                rows={3}
+                className="jarvis-input resize-none"
+              />
             </div>
           </div>
 

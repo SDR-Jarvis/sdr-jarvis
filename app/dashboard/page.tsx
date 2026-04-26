@@ -27,7 +27,7 @@ export default async function DashboardPage() {
   if (!user) redirect("/");
 
   // Fetch dashboard data in parallel
-  const [campaignsRes, approvalsRes, leadsRes, recentRes, testEmailRes] = await Promise.all([
+  const [campaignsRes, approvalsRes, leadsRes, recentRes, testEmailRes, profileRes] = await Promise.all([
     supabase
       .from("campaigns")
       .select("id, name, status, stats")
@@ -56,6 +56,11 @@ export default async function DashboardPage() {
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id)
       .eq("action", "test_email_sent"),
+    supabase
+      .from("profiles")
+      .select("full_name, company_name")
+      .eq("id", user.id)
+      .maybeSingle(),
   ]);
 
   const campaigns = campaignsRes.data ?? [];
@@ -63,6 +68,8 @@ export default async function DashboardPage() {
   const totalLeads = leadsRes.count ?? 0;
   const recentActivity = recentRes.data ?? [];
   const hasSentTestEmail = (testEmailRes.count ?? 0) > 0;
+  const profile = profileRes.data;
+  const shouldNudgeCompany = Boolean(profile?.full_name && !profile?.company_name);
 
   // Aggregate stats from campaigns
   const totalSent = campaigns.reduce(
@@ -106,6 +113,14 @@ export default async function DashboardPage() {
 
       <QuickStartBanner show={!hasSentTestEmail} />
       <OnboardingWelcomeBanner />
+      {shouldNudgeCompany && (
+        <div className="rounded-lg border border-jarvis-blue/30 bg-jarvis-blue/10 px-4 py-3 text-sm text-jarvis-muted">
+          Add your company name for better email personalization.{" "}
+          <a href="/dashboard/settings" className="text-jarvis-blue hover:underline">
+            Quick add →
+          </a>
+        </div>
+      )}
 
       {/* ── Onboarding Checklist ────────────────── */}
       <OnboardingChecklist />

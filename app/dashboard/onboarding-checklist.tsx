@@ -13,7 +13,6 @@ import {
   Globe,
   ChevronDown,
   ChevronUp,
-  Sparkles,
   Mail,
   Shield,
   PenLine,
@@ -30,42 +29,16 @@ interface ChecklistItem {
 
 interface ChecklistData {
   hasTestEmail: boolean;
-  /** Domain setup optional when using shared sender */
+  hasSentEmail: boolean;
   hasDomain: boolean;
   hasProfile: boolean;
   hasIcp: boolean;
   hasCampaign: boolean;
   hasLeads: boolean;
-  hasRun: boolean;
   hasCompliance: boolean;
-  hasReviewedDraft: boolean;
 }
 
 const CHECKLIST: ChecklistItem[] = [
-  {
-    id: "test_email",
-    label: "Send a test email",
-    description: "Confirm messages reach your inbox (Settings → Profile → Email delivery).",
-    href: "/dashboard/settings?tab=profile#test-email",
-    icon: Mail,
-    check: (d) => d.hasTestEmail,
-  },
-  {
-    id: "domain",
-    label: "Set up a sending domain (recommended)",
-    description: "Optional if you send from the shared address — see Settings → Sending address.",
-    href: "/dashboard/settings?tab=domain",
-    icon: Globe,
-    check: (d) => d.hasDomain,
-  },
-  {
-    id: "compliance",
-    label: "Legal footer & warmup cap",
-    description: "Opt-out line, postal address, daily send guardrail (Settings → Legal footer).",
-    href: "/dashboard/settings?tab=compliance",
-    icon: Sparkles,
-    check: (d) => d.hasCompliance,
-  },
   {
     id: "profile",
     label: "Set up your profile",
@@ -94,25 +67,44 @@ const CHECKLIST: ChecklistItem[] = [
     id: "leads",
     label: "Add 3–5 leads",
     description: "Import CSV or Discover — start small to validate quality.",
-    href: "/dashboard/leads/import",
+    href: "/dashboard/leads/discover",
     icon: Upload,
     check: (d) => d.hasLeads,
   },
+];
+
+const OPTIONAL_CHECKLIST: ChecklistItem[] = [
   {
-    id: "run",
-    label: "Run research & drafts",
-    description: "From a campaign, generate research and drafts — use a preview run first if you want to test without sending.",
-    href: "/dashboard/campaigns",
-    icon: Sparkles,
-    check: (d) => d.hasRun,
+    id: "test_email",
+    label: "Send a test email (optional)",
+    description: "Confirm messages reach your inbox (Settings → Profile → Email delivery).",
+    href: "/dashboard/settings?tab=profile#test-email",
+    icon: Mail,
+    check: (d) => d.hasTestEmail || d.hasSentEmail,
   },
   {
-    id: "approve",
-    label: "Approve or edit a draft",
-    description: "Review the short context Jarvis found, tweak the message if you like, then approve.",
+    id: "domain",
+    label: "Set up a sending domain (recommended)",
+    description: "Optional if you send from the shared address — see Settings → Sending address.",
+    href: "/dashboard/settings?tab=domain",
+    icon: Globe,
+    check: (d) => d.hasDomain,
+  },
+  {
+    id: "compliance",
+    label: "Legal footer (optional)",
+    description: "Opt-out line and postal address defaults are applied automatically.",
+    href: "/dashboard/settings?tab=compliance",
+    icon: Shield,
+    check: (d) => d.hasCompliance,
+  },
+  {
+    id: "first_send",
+    label: "Send your first email (optional)",
+    description: "Approve one draft to complete your first live send.",
     href: "/dashboard/approvals",
     icon: PenLine,
-    check: (d) => d.hasReviewedDraft,
+    check: (d) => d.hasSentEmail,
   },
 ];
 
@@ -120,6 +112,7 @@ export function OnboardingChecklist() {
   const supabase = createClient();
   const [data, setData] = useState<ChecklistData | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [showOptional, setShowOptional] = useState(false);
   const [domainDismissed, setDomainDismissed] = useState(false);
 
   useEffect(() => {
@@ -129,7 +122,7 @@ export function OnboardingChecklist() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const [profileRes, campaignRes, leadsRes, runsRes, sentRes, testEmailRes, approvalsDoneRes] =
+      const [profileRes, campaignRes, leadsRes, sentRes, testEmailRes] =
         await Promise.all([
         supabase
           .from("profiles")
@@ -145,10 +138,6 @@ export function OnboardingChecklist() {
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id),
         supabase
-          .from("agent_runs")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", user.id),
-        supabase
           .from("interactions")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id)
@@ -158,11 +147,6 @@ export function OnboardingChecklist() {
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id)
           .eq("action", "test_email_sent"),
-        supabase
-          .from("approvals")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .neq("status", "pending"),
       ]);
 
       if (profileRes.error) {
@@ -187,33 +171,33 @@ export function OnboardingChecklist() {
         (profile as { postal_address?: string | null } | null)?.postal_address ??
         "";
       const isProfileComplete = Boolean(
-        profile?.full_name && (profile?.company_name || (profile as { role?: string | null })?.role)
+        profile?.full_name && profile.full_name.trim().length > 1
       );
-      const isLegalComplete = Boolean(complianceOptOut && compliancePostal);
+      const isLegalComplete = Boolean(complianceOptOut || compliancePostal);
       const isICPComplete = Boolean(
         profile?.icp_description && profile.icp_description.trim().length > 10
       );
       setData({
         hasTestEmail: (testEmailRes.count ?? 0) > 0,
+        hasSentEmail: (sentRes.count ?? 0) > 0,
         hasProfile: isProfileComplete,
         hasIcp: isICPComplete,
         hasCampaign: (campaignRes.count ?? 0) > 0,
         hasLeads: (leadsRes.count ?? 0) > 0,
-        hasRun: (runsRes.count ?? 0) > 0,
         hasDomain,
         hasCompliance: isLegalComplete,
-        hasReviewedDraft: (approvalsDoneRes.count ?? 0) > 0,
       });
     }
     load();
-  }, []);
+  }, [supabase]);
 
   if (!data) return null;
 
   const completedCount = CHECKLIST.filter((item) => item.check(data)).length;
-  const totalCount = CHECKLIST.length;
+  const totalCount = CHECKLIST.length + OPTIONAL_CHECKLIST.length;
+  const optionalRemaining = OPTIONAL_CHECKLIST.filter((item) => !item.check(data)).length;
   const percentage = Math.round((completedCount / totalCount) * 100);
-  const allDone = completedCount === totalCount;
+  const allDone = completedCount === CHECKLIST.length && optionalRemaining === 0;
 
   if (allDone) return null;
 
@@ -251,7 +235,7 @@ export function OnboardingChecklist() {
             <p className="text-xs text-jarvis-muted">
               {completedCount === 0
                 ? "Complete these steps to start closing deals."
-                : `${totalCount - completedCount} step${totalCount - completedCount > 1 ? "s" : ""} remaining.`}
+                : `${completedCount}/${totalCount} complete · ${optionalRemaining} optional step${optionalRemaining === 1 ? "" : "s"} left`}
             </p>
           </div>
         </div>
@@ -292,22 +276,58 @@ export function OnboardingChecklist() {
                   </div>
                   <Icon className="h-4 w-4 shrink-0 text-jarvis-muted/30" />
                 </Link>
-                {item.id === "domain" && !done && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      localStorage.setItem("jarvis_domain_done", "1");
-                      setDomainDismissed(true);
-                      setData((prev) => prev ? { ...prev, hasDomain: true } : prev);
-                    }}
-                    className="shrink-0 rounded-md px-2 py-1 text-[10px] font-medium text-jarvis-blue hover:bg-jarvis-blue/10 transition-colors"
-                  >
-                    Already done
-                  </button>
-                )}
               </div>
             );
           })}
+          <div className="pt-2">
+            <button
+              onClick={() => setShowOptional((v) => !v)}
+              className="text-xs text-jarvis-blue hover:underline"
+            >
+              {showOptional ? "Hide optional steps" : "Show optional steps"}
+            </button>
+          </div>
+          {showOptional &&
+            OPTIONAL_CHECKLIST.map((item) => {
+              const done = item.check(data);
+              const Icon = item.icon;
+              return (
+                <div key={item.id} className="flex items-center gap-0">
+                  <Link
+                    href={item.href}
+                    className={`flex flex-1 items-center gap-3 rounded-md px-3 py-2.5 transition-colors ${
+                      done ? "opacity-50" : "hover:bg-white/[0.03]"
+                    }`}
+                  >
+                    {done ? (
+                      <CheckCircle className="h-5 w-5 shrink-0 text-jarvis-success" />
+                    ) : (
+                      <Circle className="h-5 w-5 shrink-0 text-jarvis-border" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${done ? "text-jarvis-muted line-through" : "text-white"}`}>
+                        {item.label}
+                      </p>
+                      <p className="text-xs text-jarvis-muted/60 truncate">{item.description}</p>
+                    </div>
+                    <Icon className="h-4 w-4 shrink-0 text-jarvis-muted/30" />
+                  </Link>
+                  {item.id === "domain" && !done && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        localStorage.setItem("jarvis_domain_done", "1");
+                        setDomainDismissed(true);
+                        setData((prev) => prev ? { ...prev, hasDomain: true } : prev);
+                      }}
+                      className="shrink-0 rounded-md px-2 py-1 text-[10px] font-medium text-jarvis-blue hover:bg-jarvis-blue/10 transition-colors"
+                    >
+                      Already done
+                    </button>
+                  )}
+                </div>
+              );
+            })}
         </div>
       )}
     </div>
