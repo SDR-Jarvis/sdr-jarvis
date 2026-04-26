@@ -16,6 +16,7 @@ import { getJarvisGreeting, formatRelativeTime } from "@/lib/utils";
 import { ApprovalActions } from "./approval-actions";
 import { OnboardingChecklist } from "./onboarding-checklist";
 import { QuickStartBanner } from "./quick-start-banner";
+import { OnboardingWelcomeBanner } from "./onboarding-welcome";
 import { PRODUCT_SUBLINE, PRODUCT_TAGLINE } from "@/lib/product-copy";
 
 export default async function DashboardPage() {
@@ -104,6 +105,7 @@ export default async function DashboardPage() {
       </div>
 
       <QuickStartBanner show={!hasSentTestEmail} />
+      <OnboardingWelcomeBanner />
 
       {/* ── Onboarding Checklist ────────────────── */}
       <OnboardingChecklist />

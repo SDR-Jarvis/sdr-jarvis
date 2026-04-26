@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const nextRaw = searchParams.get("next") ?? "/dashboard";
+  const nextRaw = searchParams.get("next") ?? "";
   const next = nextRaw.startsWith("/") ? nextRaw : "/dashboard";
 
   if (code) {
@@ -35,7 +35,22 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        return NextResponse.redirect(`${origin}${next || "/dashboard"}`);
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("onboarded")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const redirectTo =
+        profile?.onboarded === false ? "/onboarding/product" : "/dashboard";
+      return NextResponse.redirect(`${origin}${redirectTo}`);
     }
 
     console.error("[auth/callback] exchangeCodeForSession:", error.message);

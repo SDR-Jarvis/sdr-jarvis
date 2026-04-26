@@ -32,15 +32,38 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const pathname = request.nextUrl.pathname;
+  const onDashboard = pathname.startsWith("/dashboard");
+  const onOnboarding = pathname.startsWith("/onboarding");
 
-  // Redirect unauthenticated users away from dashboard
-  if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {
+  // Redirect unauthenticated users away from private routes.
+  if (!user && (onDashboard || onOnboarding)) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  // Redirect authenticated users from login to dashboard
-  if (user && request.nextUrl.pathname === "/") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("onboarded")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const needsOnboarding = profile?.onboarded === false;
+
+    if (needsOnboarding && (pathname === "/" || onDashboard)) {
+      return NextResponse.redirect(new URL("/onboarding/product", request.url));
+    }
+
+    if (!needsOnboarding && onOnboarding) {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+
+    // Redirect authenticated users from login to the right home.
+    if (pathname === "/") {
+      return NextResponse.redirect(
+        new URL(needsOnboarding ? "/onboarding/product" : "/dashboard", request.url)
+      );
+    }
   }
 
   return response;
