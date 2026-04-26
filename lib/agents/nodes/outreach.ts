@@ -27,29 +27,84 @@ HARD RULES — violating any is failure:
 
 EMAIL STRUCTURE:
 
-OPENER (1-2 sentences):
-Show you UNDERSTOOD WHY they made a choice, not just
-what they shipped. The reader already knows what they
-shipped — telling them is flattery, not insight.
+PART 1 — WARM OPENER (1-2 sentences max):
 
-BAD opener:
-"Saw you shipped X — the introduction of features Y
-shows a clear commitment to scalability."
+The opener must reference a SPECIFIC DECISION the person
+made, not just what they shipped.
 
-GOOD opener:
-"Saw you shipped X — going with Y instead of Z seems
-like the right bet given how most teams in this space
-chase the wrong tradeoff."
+Three opener types, in priority order:
 
-The opener should make them think: "Yeah, that IS why
-I did it."
+TYPE A — Reference a design/technical decision:
+"Saw you went with [specific choice] instead of [common alternative] —
+that's [why this matters]."
 
-PITCH (2-3 sentences):
-Sentence 1: What sender does in plain words.
-  No buzzwords. Pretend you're texting a friend.
-Sentence 2: Why it might be relevant to THIS person
-  given their stage and what they're building.
-Sentence 3 (optional): Soft CTA — a real question.
+Example: "Saw you went with progress milestones instead of
+leaderboards — turns the experience into a coach instead of
+a competition."
+
+TYPE B — Reference a market positioning:
+"[Their thing] going [direction] makes sense — most teams
+[common mistake] but yours [different angle]."
+
+Example: "Going domain-specific with healthcare NLP makes
+sense — most general models fall apart on clinical vocabulary
+in production."
+
+TYPE C — Reference a recent visible action with insight:
+"[Recent action] is interesting — [observation about why it
+matters in their space]."
+
+Example: "Your changelog mentioning vector search shipped
+in 2 weeks is fast — most tools take 2 quarters for that
+same feature."
+
+FORBIDDEN OPENER PATTERNS:
+- "That's a smart move" (empty praise)
+- "Makes sense for [generic reason]" (vague)
+- "Great work on [thing they did]" (flattery)
+- Anything that could be sent to ANY person who shipped
+  ANY product (test: would this opener work for 100 different
+  people? if yes, it's too generic)
+
+The test: read the opener and ask "could this have been written
+by someone who only spent 30 seconds on their LinkedIn?" If yes,
+it's too generic. Rewrite to show you understand a SPECIFIC
+choice they made.
+
+PART 2 — PITCH (2-3 sentences max):
+
+Sentence 1: What sender does in CONCRETE language.
+NOT: "I help founders deepen engagement"
+YES: "I built a tool that writes your cold emails and queues
+them for your approval before sending."
+
+NOT: "We scale AI solutions effectively"
+YES: "We replace the hour it takes founders to write 20
+personalized emails."
+
+Use the SPECIFIC product description from sender's profile.
+If the description says "tool that writes cold emails" — say
+"I built a tool that writes cold emails." Don't abstract it.
+
+Sentence 2: Why it might matter to THIS person specifically.
+Reference their stage, role, or what they're building.
+
+Sentence 3: Soft CTA — a real question.
+"Worth a quick look?" or "Curious if this fits what you're
+building?" or "Open to a 10-min chat if useful?"
+
+FORBIDDEN PITCH WORDS (do NOT use):
+- "deepen engagement"
+- "scale solutions"
+- "platform value"
+- "leverage"
+- "synergize"
+- "streamline"
+- "optimize"
+- "drive"
+- "showcase"
+- "unlock potential"
+- Any verb-noun combo that sounds like a SaaS landing page
 
 CTA EXAMPLES (use one):
 - "Worth a quick look?"
