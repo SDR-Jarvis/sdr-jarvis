@@ -101,6 +101,10 @@ export async function POST(req: NextRequest) {
     title: l.title,
     company: l.company,
     companyUrl: l.company_url,
+    discoverySource: l.discovery_source ?? null,
+    githubUsername:
+      (l.enrichment_data as { github_username?: string } | null)?.github_username ??
+      null,
   }));
 
   const { data: profile } = await supabase

@@ -106,6 +106,26 @@ FORBIDDEN PITCH WORDS (do NOT use):
 - "unlock potential"
 - Any verb-noun combo that sounds like a SaaS landing page
 
+Use the research data to write the opener:
+
+If research_depth is 'deep' and confidence is 'high':
+  Reference opener_signal directly. This is the gold case.
+
+If research_depth is 'medium':
+  Still use opener_signal but frame it as observation, not praise.
+
+If research_depth is 'surface' or fallback_used is true:
+  DO NOT pretend to know specifics. Use a more honest opener:
+  "Came across [company] — I'm reaching out to founders
+  building [their company_focus]."
+
+  Then make the pitch carry the email instead of relying on
+  a fake-deep opener.
+
+NEVER write a fake-specific opener if research is shallow.
+A direct, honest opener beats a generic compliment dressed up
+as personalization.
+
 CTA EXAMPLES (use one):
 - "Worth a quick look?"
 - "Curious if this fits what you're building."
@@ -151,6 +171,9 @@ RESEARCH (use this for the opener):
 - Signal: {opener_signal}
 - Why it matters: {likely_pain_point}
 - Confidence: {confidence}
+- Research depth: {research_depth}
+- Company focus: {company_focus}
+- Fallback used: {fallback_used}
 
 SENDER:
 - Name: {sender_name}
@@ -247,6 +270,8 @@ function fillInitialOutreachPrompt(params: {
     .replaceAll("{likely_pain_point}", r.likely_pain_point ?? (r.painPoints[0] ?? ""))
     .replaceAll("{confidence}", r.confidence ?? "low")
     .replaceAll("{fallback_used}", String(r.fallback_used ?? false))
+    .replaceAll("{research_depth}", r.research_depth ?? "surface")
+    .replaceAll("{company_focus}", r.company_focus ?? r.companyInfo ?? "")
     .replaceAll("{sender_name}", params.sender_name)
     .replaceAll("{sender_company}", params.sender_company)
     .replaceAll("{product_description}", params.product_description)

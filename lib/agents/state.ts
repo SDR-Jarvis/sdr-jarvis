@@ -12,6 +12,8 @@ export interface LeadData {
   title: string | null;
   company: string | null;
   companyUrl: string | null;
+  discoverySource?: string | null;
+  githubUsername?: string | null;
 }
 
 export interface ResearchData {
@@ -27,10 +29,13 @@ export interface ResearchData {
   opener_signal?: string;
   opener_type?: string;
   signal_source?: string;
+  signal_url?: string;
+  company_focus?: string;
   company_differentiation?: string;
   likely_pain_point?: string;
   confidence?: "high" | "medium" | "low";
   fallback_used?: boolean;
+  research_depth?: "deep" | "medium" | "surface";
 }
 
 export interface DraftMessage {
