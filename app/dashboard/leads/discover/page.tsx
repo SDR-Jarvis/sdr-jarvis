@@ -298,6 +298,7 @@ export default function DiscoverLeadsPage() {
         added?: number;
         count?: number;
         campaign_name?: string;
+        message?: string;
       };
       console.log("[Add Click] Response:", response.status, result);
 
@@ -307,7 +308,14 @@ export default function DiscoverLeadsPage() {
       }
 
       const added = result.added ?? result.count ?? 0;
-      alert(`Added ${added} leads to ${result.campaign_name ?? "campaign"}`);
+      if (added === 0) {
+        alert(
+          result.message ??
+            "No new leads added — they may already be in this campaign."
+        );
+      } else {
+        alert(`Added ${added} leads to ${result.campaign_name ?? "campaign"}`);
+      }
       setSelected(new Set());
       router.push(`/dashboard/campaigns/${selectedCampaignId}`);
     } catch (err) {

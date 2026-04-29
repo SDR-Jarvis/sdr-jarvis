@@ -3,7 +3,54 @@ import { createLLMClient } from "@/lib/llm";
 import { logger } from "@/lib/logger";
 import { appendSignaturePlain } from "@/lib/email/signature";
 import { createServiceClient } from "@/lib/supabase/server";
+import { isPipelineRunCancelled } from "@/lib/agents/pipeline-cancel";
 import type { JarvisStateType, DraftMessage, ResearchData } from "../state";
+
+function buildProductBlock(profile: Record<string, unknown> | null): string {
+  const productDesc = (
+    typeof profile?.product_description === "string" ? profile.product_description : ""
+  ).trim();
+  const companyName =
+    (typeof profile?.company_name === "string" && profile.company_name.trim()) ||
+    (typeof profile?.full_name === "string" && profile.full_name.trim()) ||
+    "their company";
+
+  if (productDesc.length < 20) {
+    return `
+PRODUCT CONTEXT:
+The sender has not described their product in detail.
+Use vague but honest framing in the pitch.
+Reference ${companyName} without claiming specific capabilities.
+
+Example pitch sentence:
+"I'm working on something at ${companyName} — focused on
+helping people like you with [one genuine inferred benefit, non-specific]."
+
+Keep the pitch SHORT. Do not invent a different category of product.
+`.trim();
+  }
+
+  return `
+PRODUCT CONTEXT — THE SENDER'S PRODUCT:
+
+"${productDesc}"
+
+PITCH RULES:
+1. The pitch MUST describe THIS product (the sender's product)
+2. Do NOT pivot the product to match the recipient's industry unless the description is explicitly broad
+3. Do NOT invent capabilities not in the description
+4. Use plain language drawn from the description
+5. The pitch describes what THE SENDER offers, not what the recipient does
+
+CRITICAL: If you write any of these phrases and the description above does NOT say their product is about email or cold outreach, the email is WRONG:
+- "writes cold emails"
+- "drafts cold emails"
+- "personalized cold emails for your approval"
+
+Always describe what the SENDER actually does, based on
+the description above. Never default to cold-email-tool language unless the description is literally about that.
+`.trim();
+}
 
 const OUTREACH_SYSTEM_PROMPT = `
 You are writing a cold email from one technical founder
@@ -12,19 +59,13 @@ to another. Both are building real products.
 TONE: Founder to founder. Casual but smart.
 Like a peer, not a salesperson.
 
-PRODUCT TRUTH RULES — VIOLATING ANY OF THESE IS FAILURE:
+{product_block}
 
-The product is SDR Jarvis. It does ONE thing:
-Researches leads and drafts cold emails. The founder
-approves before anything sends.
+PITCH VS OPENER:
+- PART 1 (opener) uses RESEARCH about the lead — be specific when research is strong.
+- PART 2 (pitch) must follow PRODUCT CONTEXT above only — the sender's real product, not a generic outreach stack.
 
-When writing the pitch, you may use ONLY these phrasings:
-- "I built a tool that writes cold emails for your approval"
-- "Researches prospects and drafts personalized cold emails"
-- "AI that drafts your cold outbound, you approve each send"
-- "Helps founders send personalized cold emails without writing them from scratch"
-
-You may NEVER claim the product does any of these things:
+You may NEVER claim the sender's product does any of these invented things:
 - Manages microservices
 - Does sentiment analysis
 - Scales technology
@@ -35,11 +76,7 @@ You may NEVER claim the product does any of these things:
 - Data infrastructure
 - API platform
 
-If the lead's company does X, you do NOT pitch a product
-that does X. The product is a cold email tool. ALWAYS.
-
-The pitch describes US, not them. Their context only matters
-in the OPENER. The pitch stays consistent: cold email writer.
+If the lead's company does X, do NOT pretend the sender's product is secretly "also about X" unless the product description says so.
 
 HARD RULES — violating any is failure:
 1. Total body under 80 words (excluding signature)
@@ -102,21 +139,11 @@ choice they made.
 
 PART 2 — PITCH (2-3 sentences max):
 
-Sentence 1: What sender does in CONCRETE language.
-NOT: "I help founders deepen engagement"
-YES: "I built a tool that writes your cold emails and queues
-them for your approval before sending."
+Sentence 1: What the sender sells or built — concrete language taken from PRODUCT CONTEXT only.
+NOT: "I help founders deepen engagement" or generic SaaS verbs.
 
-NOT: "We scale AI solutions effectively"
-YES: "We replace the hour it takes founders to write 20
-personalized emails."
-
-Use the SPECIFIC product description from sender's profile.
-If the description says "tool that writes cold emails" — say
-"I built a tool that writes cold emails." Don't abstract it.
-
-Sentence 2: Why it might matter to THIS person specifically.
-Reference their stage, role, or what they're building.
+Sentence 2: Why it might matter to THIS person specifically (still honest to PRODUCT CONTEXT).
+Reference their stage, role, or what they're building — without misrepresenting your product.
 
 Sentence 3: Soft CTA — a real question.
 "Worth a quick look?" or "Curious if this fits what you're
@@ -207,7 +234,7 @@ RESEARCH (use this for the opener):
 SENDER:
 - Name: {sender_name}
 - Company: {sender_company}
-- What they do: {product_description}
+- One-line reminder: {product_one_liner}
 
 PAST APPROVED (match this voice):
 {approved_examples}
@@ -279,23 +306,6 @@ function sanitizeDraftBody(body: string): string {
   return cleanBody;
 }
 
-/** Canonical description when profile has no product_description yet. */
-const ACCURATE_JARVIS_PRODUCT_BLURB =
-  "SDR Jarvis researches prospects and drafts personalized cold emails for your approval before anything sends.";
-
-const ALLOWED_PRODUCT_CLAIMS: RegExp[] = [
-  /writes? (cold |personalized )?emails?/i,
-  /drafts? (cold |personalized )?emails?/i,
-  /researches? (your )?(leads?|prospects?|founders?)/i,
-  /queue.{0,30}(approval|review)/i,
-  /you (approve|review) before/i,
-  /personalized cold (email|outreach)/i,
-  /helps? (you )?send (cold )?emails?/i,
-  /outbound for (founders?|saas)/i,
-  /cold (email|outreach)/i,
-  /approval before (anything )?sends?/i,
-];
-
 const FORBIDDEN_PRODUCT_INVENTIONS: RegExp[] = [
   /microservices?/i,
   /sentiment analysis/i,
@@ -313,7 +323,34 @@ const FORBIDDEN_PRODUCT_INVENTIONS: RegExp[] = [
 type ProfileSummary = {
   full_name?: string | null;
   company_name?: string | null;
+  product_description?: string | null;
 };
+
+function productDescriptionMentionsOutboundEmail(desc: string): boolean {
+  const d = desc.toLowerCase();
+  if (!d) return false;
+  if (!/\b(email|e-mail|inbox|newsletter|outreach|smtp|sequence|dm|dms)\b/i.test(d)) {
+    return false;
+  }
+  return /\bcold\b|\boutreach\b|\bemail\b|\bsequence\b|\binbox\b|\bnewsletter\b/i.test(d);
+}
+
+const FORBIDDEN_GENERIC_COLD_EMAIL_PITCH: RegExp[] = [
+  /writes?\s+cold\s+emails?/i,
+  /drafts?\s+cold\s+emails?/i,
+  /cold\s+email\s+tool/i,
+  /personalized\s+cold\s+emails?/i,
+  /\bcold\s+emails?\s+for\s+your\s+approval/i,
+];
+
+function pitchReflectsProductDescription(pitch: string, productDesc: string): boolean {
+  const p = pitch.toLowerCase();
+  const d = productDesc.trim().toLowerCase();
+  if (d.length < 20) return p.length >= 40;
+  const tokens = d.split(/[^a-z0-9]+/).filter((t) => t.length >= 5);
+  if (tokens.length === 0) return p.length >= 40;
+  return tokens.some((t) => p.includes(t));
+}
 
 /**
  * Body is greeting + opener + pitch separated by blank lines.
@@ -330,8 +367,12 @@ function extractPitchForProductValidation(body: string): string {
   return normalized;
 }
 
-function validateProductPitch(pitch: string): { isValid: boolean; reason?: string } {
+function validateProductPitch(
+  pitch: string,
+  rawProductDescription: string
+): { isValid: boolean; reason?: string } {
   const p = pitch.trim();
+  const desc = (rawProductDescription || "").trim();
   if (!p) {
     return { isValid: false, reason: "Empty pitch segment" };
   }
@@ -344,32 +385,60 @@ function validateProductPitch(pitch: string): { isValid: boolean; reason?: strin
       };
     }
   }
-  const hasAllowedClaim = ALLOWED_PRODUCT_CLAIMS.some((pat) => {
-    pat.lastIndex = 0;
-    return pat.test(p);
-  });
-  if (!hasAllowedClaim) {
+
+  if (!productDescriptionMentionsOutboundEmail(desc)) {
+    for (const pattern of FORBIDDEN_GENERIC_COLD_EMAIL_PITCH) {
+      pattern.lastIndex = 0;
+      if (pattern.test(p)) {
+        return {
+          isValid: false,
+          reason: `Generic cold-email pitch not allowed for this product: ${pattern}`,
+        };
+      }
+    }
+  }
+
+  if (desc.length >= 20 && !pitchReflectsProductDescription(p, desc)) {
     return {
       isValid: false,
-      reason: "No accurate product description found in pitch",
+      reason: "Pitch should reflect words or ideas from the product description",
     };
   }
+
+  if (desc.length < 20 && p.length < 35) {
+    return { isValid: false, reason: "Pitch too thin when product context is vague" };
+  }
+
   return { isValid: true };
 }
 
-function generateFallbackPitch(lead: JarvisStateType["leads"][number], profile: ProfileSummary): string {
+function generateFallbackPitch(
+  lead: JarvisStateType["leads"][number],
+  profile: ProfileSummary,
+  rawProductDescription: string
+): string {
   const firstName = lead.firstName?.trim() || "there";
   const senderName = profile.full_name?.trim().split(/\s+/)[0] ?? "";
-  const senderCompany = profile.company_name?.trim() || "SDR Jarvis";
+  const senderCompany =
+    profile.company_name?.trim() || (senderName ? `${senderName}'s company` : "our team");
   const company = lead.company?.trim() || "your company";
+  const desc = rawProductDescription.trim();
+
+  if (desc.length >= 20) {
+    const snippet = desc.length > 280 ? `${desc.slice(0, 280)}…` : desc;
+    return `Hi ${firstName},
+
+Came across ${company} — ${snippet}
+
+Thought it might be relevant to what you're building. Worth a quick look?
+
+${senderName}
+${senderCompany}`.trim();
+  }
 
   return `Hi ${firstName},
 
-Came across ${company} — reaching out because I focus on helping technical founders with their cold outbound.
-
-I built SDR Jarvis — it researches your prospects and drafts your cold emails for your approval before sending. Built specifically for founders doing their own outbound, not for sales teams.
-
-Would it be useful for what you're building?
+Came across ${company} — I'm building something at ${senderCompany} and reaching out to folks in your space. Happy to share more if it's useful.
 
 ${senderName}
 ${senderCompany}`.trim();
@@ -378,15 +447,15 @@ ${senderCompany}`.trim();
 function resolveProductDescriptionFromProfile(p: Record<string, unknown> | null): string {
   const pd =
     typeof p?.product_description === "string" ? p.product_description.trim() : "";
-  if (pd) return pd;
-  return ACCURATE_JARVIS_PRODUCT_BLURB;
+  return pd;
 }
 
 function fillInitialOutreachPrompt(params: {
   research: ResearchData;
   sender_name: string;
   sender_company: string;
-  product_description: string;
+  product_block: string;
+  product_one_liner: string;
   icp_description: string;
   formality_level: string;
   sign_off: string;
@@ -396,7 +465,8 @@ function fillInitialOutreachPrompt(params: {
   lead_company: string;
 }): string {
   const r = params.research;
-  return OUTREACH_SYSTEM_PROMPT.replaceAll("{opener_signal}", r.opener_signal ?? r.summary ?? "")
+  return OUTREACH_SYSTEM_PROMPT.replaceAll("{product_block}", params.product_block)
+    .replaceAll("{opener_signal}", r.opener_signal ?? r.summary ?? "")
     .replaceAll("{opener_type}", r.opener_type ?? "general")
     .replaceAll("{company_differentiation}", r.company_differentiation ?? r.companyInfo ?? "")
     .replaceAll("{likely_pain_point}", r.likely_pain_point ?? (r.painPoints[0] ?? ""))
@@ -406,7 +476,7 @@ function fillInitialOutreachPrompt(params: {
     .replaceAll("{company_focus}", r.company_focus ?? r.companyInfo ?? "")
     .replaceAll("{sender_name}", params.sender_name)
     .replaceAll("{sender_company}", params.sender_company)
-    .replaceAll("{product_description}", params.product_description)
+    .replaceAll("{product_one_liner}", params.product_one_liner)
     .replaceAll("{icp_description}", params.icp_description)
     .replaceAll("{formality_level}", params.formality_level)
     .replaceAll("{sign_off}", params.sign_off)
@@ -427,6 +497,24 @@ export async function outreachNode(
     return { errors: ["Outreach: missing lead or research data"] };
   }
 
+  if (
+    state.threadId &&
+    (await isPipelineRunCancelled(state.threadId, state.userId))
+  ) {
+    logger.info("outreach", "Run cancelled — skipping draft");
+    return {
+      currentLeadIndex: state.leads.length,
+      researchData: null,
+      draftMessage: null,
+      approvalStatus: "none",
+      stopRequested: true,
+      nextAgent: "supervisor",
+      messages: [
+        new AIMessage("Outreach cancelled — pipeline stopped."),
+      ],
+    };
+  }
+
   const name = `${lead.firstName} ${lead.lastName}`;
   const isFollowUp = state.sequenceStep > 1 && state.previousEmail;
   let profileFallback: ProfileSummary = {};
@@ -443,6 +531,7 @@ export async function outreachNode(
   let systemPrompt: string;
   let userContent: string;
   let appendSignatureBlock = true;
+  let rawProductDescForValidation = "";
 
   if (isFollowUp && state.previousEmail) {
     systemPrompt = FOLLOW_UP_PROMPT.replace("{STEP}", String(state.sequenceStep))
@@ -466,7 +555,6 @@ export async function outreachNode(
     appendSignatureBlock = false;
     let senderName = state.senderDisplayName || "Founder";
     let senderCompany = "";
-    let productDescription = ACCURATE_JARVIS_PRODUCT_BLURB;
     let icpDescription = "";
     let formalityLevel = "professional-casual";
     let signOff = state.senderSignoff?.trim() || "Best";
@@ -479,12 +567,12 @@ export async function outreachNode(
         .eq("id", state.userId)
         .single();
 
-      if (profile) {
-        const p = profile as Record<string, unknown>;
+      const p = (profile ?? null) as Record<string, unknown> | null;
+      if (p) {
         if (typeof p.full_name === "string" && p.full_name.trim()) senderName = p.full_name.trim();
         if (typeof p.company_name === "string" && p.company_name.trim())
           senderCompany = p.company_name.trim();
-        productDescription = resolveProductDescriptionFromProfile(p);
+        rawProductDescForValidation = resolveProductDescriptionFromProfile(p);
         if (typeof p.icp_description === "string" && p.icp_description.trim())
           icpDescription = p.icp_description.trim();
         const tone = (p.tone_preferences ?? {}) as Record<string, unknown>;
@@ -494,6 +582,7 @@ export async function outreachNode(
         profileFallback = {
           full_name: typeof p.full_name === "string" ? p.full_name : null,
           company_name: typeof p.company_name === "string" ? p.company_name : null,
+          product_description: rawProductDescForValidation || null,
         };
       }
 
@@ -521,11 +610,18 @@ export async function outreachNode(
           .join("\n\n---\n");
       }
 
+      const productBlock = buildProductBlock(p);
+      const productOneLiner =
+        rawProductDescForValidation.length > 0
+          ? rawProductDescForValidation.slice(0, 120)
+          : "(Not set in profile — follow PRODUCT CONTEXT above.)";
+
       systemPrompt = fillInitialOutreachPrompt({
         research,
         sender_name: senderName,
         sender_company: senderCompany,
-        product_description: productDescription,
+        product_block: productBlock,
+        product_one_liner: productOneLiner,
         icp_description: icpDescription || "B2B technical founders and operators.",
         formality_level: formalityLevel,
         sign_off: signOff,
@@ -535,14 +631,35 @@ export async function outreachNode(
         lead_company: lead.company ?? "",
       });
 
+      console.log("[Outreach] Building prompt for user:", {
+        user_id: state.userId,
+        company_name: senderCompany || null,
+        product_description_first_100:
+          rawProductDescForValidation.slice(0, 100) || "EMPTY",
+        product_description_length: rawProductDescForValidation.length,
+      });
+
       userContent =
         "Write the email now. Use Hi [FirstName], as the greeting line (replace [FirstName] with the lead's first name only). Keep it concise and follow the JSON format exactly.";
     } catch {
+      rawProductDescForValidation = "";
+      profileFallback = {
+        full_name: null,
+        company_name: null,
+        product_description: null,
+      };
+      console.log("[Outreach] Building prompt for user:", {
+        user_id: state.userId,
+        company_name: senderCompany || null,
+        product_description_first_100: "EMPTY",
+        product_description_length: 0,
+      });
       systemPrompt = fillInitialOutreachPrompt({
         research,
         sender_name: senderName,
         sender_company: senderCompany,
-        product_description: productDescription,
+        product_block: buildProductBlock(null),
+        product_one_liner: "(Not set in profile — follow PRODUCT CONTEXT above.)",
         icp_description: icpDescription || "B2B technical founders and operators.",
         formality_level: formalityLevel,
         sign_off: signOff,
@@ -617,7 +734,8 @@ export async function outreachNode(
     if (!isFollowUp) {
       let lastText = text;
       let validation = validateProductPitch(
-        extractPitchForProductValidation(draft.body)
+        extractPitchForProductValidation(draft.body),
+        rawProductDescForValidation
       );
       let retries = 0;
       const conversation: { role: string; content: string }[] = [
@@ -632,7 +750,7 @@ export async function outreachNode(
         conversation.push({ role: "assistant", content: lastText });
         conversation.push({
           role: "user",
-          content: `IMPORTANT: Previous attempt failed validation: ${validation.reason}. The pitch MUST describe SDR Jarvis as a tool that researches prospects and drafts cold emails for the founder's approval before sending. Do NOT mention any other capabilities. Obey PRODUCT TRUTH RULES. Return JSON only (subject, body, personalizationNotes).`,
+          content: `IMPORTANT: Previous attempt failed validation: ${validation.reason}. Rewrite the pitch so it ONLY reflects PRODUCT CONTEXT in the system prompt and the sender's real product. Do NOT use cold-email-tool or generic outbound-SaaS language unless the product description explicitly says the product is about email or outreach. Return JSON only (subject, body, personalizationNotes).`,
         });
         const retryRes = await llm.invoke(conversation);
         lastText =
@@ -651,13 +769,18 @@ export async function outreachNode(
             research.opener_signal ?? research.talkingPoints[0] ?? "Research-led angle.";
         }
         validation = validateProductPitch(
-          extractPitchForProductValidation(draft.body)
+          extractPitchForProductValidation(draft.body),
+          rawProductDescForValidation
         );
         retries++;
       }
       if (!validation.isValid) {
         logger.error("outreach", "[Outreach] Falling back to template pitch");
-        draft.body = generateFallbackPitch(lead, profileFallback);
+        draft.body = generateFallbackPitch(
+          lead,
+          profileFallback,
+          rawProductDescForValidation
+        );
       }
     }
 
@@ -698,14 +821,19 @@ export async function outreachNode(
         }
         if (!isFollowUp) {
           const v = validateProductPitch(
-            extractPitchForProductValidation(draft.body)
+            extractPitchForProductValidation(draft.body),
+            rawProductDescForValidation
           );
           if (!v.isValid) {
             logger.warn(
               "outreach",
               `Revision failed product validation: ${v.reason}, using fallback pitch`
             );
-            draft.body = generateFallbackPitch(lead, profileFallback);
+            draft.body = generateFallbackPitch(
+              lead,
+              profileFallback,
+              rawProductDescForValidation
+            );
           }
         }
         logger.success("outreach", `Revised draft for ${name}: "${draft.subject}"`);
@@ -726,14 +854,19 @@ export async function outreachNode(
 
     if (!isFollowUp) {
       const v = validateProductPitch(
-        extractPitchForProductValidation(draft.body)
+        extractPitchForProductValidation(draft.body),
+        rawProductDescForValidation
       );
       if (!v.isValid) {
         logger.warn(
           "outreach",
           `Final draft failed product validation: ${v.reason}, using fallback pitch`
         );
-        draft.body = generateFallbackPitch(lead, profileFallback);
+        draft.body = generateFallbackPitch(
+          lead,
+          profileFallback,
+          rawProductDescForValidation
+        );
       }
     }
 

@@ -163,7 +163,8 @@ export async function qualifyReply(params: {
     await supabase
       .from("leads")
       .update({ status: newLeadStatus })
-      .eq("id", params.leadId);
+      .eq("id", params.leadId)
+      .eq("user_id", params.userId);
 
     await supabase.from("audit_log").insert({
       user_id: params.userId,

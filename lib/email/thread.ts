@@ -44,16 +44,24 @@ interface EmailReplyMetadata {
  *   3. Otherwise return `null` and let the caller fall through.
  *
  * The Supabase client is injected to keep this function unit-testable.
+ *
+ * When `options.userId` is set (e.g. service-role client), the lookup is
+ * restricted to that user's row so a guessed interaction id cannot read
+ * another tenant's metadata.
  */
 export async function loadReplyThreadContext(
   supabase: SupabaseClient,
-  emailReplyInteractionId: string
+  emailReplyInteractionId: string,
+  options?: { userId?: string }
 ): Promise<ThreadContext | null> {
-  const { data, error } = await supabase
+  let q = supabase
     .from("interactions")
     .select("metadata")
-    .eq("id", emailReplyInteractionId)
-    .maybeSingle();
+    .eq("id", emailReplyInteractionId);
+  if (options?.userId) {
+    q = q.eq("user_id", options.userId);
+  }
+  const { data, error } = await q.maybeSingle();
 
   if (error) {
     logger.warn("thread", `Failed to load reply interaction: ${error.message}`);

@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
         .from("leads")
         .select("email, first_name, last_name, campaign_id")
         .eq("id", leadId)
+        .eq("user_id", user.id)
         .single();
 
       if (!lead?.email) {
@@ -63,7 +64,9 @@ export async function POST(req: NextRequest) {
       // in order: cached fields on the email_reply row; Resend Received
       // Emails API via the stored email_id. `null` means we can't thread
       // this reply — we still send, but without In-Reply-To / References.
-      const threadCtx = await loadReplyThreadContext(serviceClient, replyId);
+      const threadCtx = await loadReplyThreadContext(serviceClient, replyId, {
+        userId: user.id,
+      });
       if (!threadCtx) {
         logger.warn(
           "replies",
@@ -115,7 +118,8 @@ export async function POST(req: NextRequest) {
         await serviceClient
           .from("leads")
           .update({ status: "qualified", last_contacted_at: new Date().toISOString() })
-          .eq("id", leadId);
+          .eq("id", leadId)
+          .eq("user_id", user.id);
 
         await serviceClient.from("audit_log").insert({
           user_id: user.id,
@@ -156,7 +160,8 @@ export async function POST(req: NextRequest) {
       await serviceClient
         .from("leads")
         .update({ status: "replied" })
-        .eq("id", leadId);
+        .eq("id", leadId)
+        .eq("user_id", user.id);
 
       await serviceClient.from("audit_log").insert({
         user_id: user.id,
@@ -172,7 +177,8 @@ export async function POST(req: NextRequest) {
       await serviceClient
         .from("leads")
         .update({ status: "archived" })
-        .eq("id", leadId);
+        .eq("id", leadId)
+        .eq("user_id", user.id);
 
       await serviceClient.from("audit_log").insert({
         user_id: user.id,

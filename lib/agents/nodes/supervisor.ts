@@ -2,6 +2,7 @@ import { AIMessage } from "@langchain/core/messages";
 import { createLLMClient, JARVIS_SYSTEM_PROMPT } from "@/lib/llm";
 import { logger } from "@/lib/logger";
 import { createServiceClient } from "@/lib/supabase/server";
+import { isPipelineRunCancelled } from "@/lib/agents/pipeline-cancel";
 import type { JarvisStateType } from "../state";
 
 export async function supervisorNode(
@@ -13,6 +14,17 @@ export async function supervisorNode(
 
   // All leads processed
   if (!lead) {
+    if (state.stopRequested) {
+      logger.info("supervisor", "Pipeline stopped by user");
+      return {
+        nextAgent: "done",
+        messages: [
+          new AIMessage(
+            "Pipeline stopped. Drafts already queued are still on the Approvals page."
+          ),
+        ],
+      };
+    }
     logger.success("supervisor", `Pipeline complete — ${total} leads processed`);
     return {
       nextAgent: "done",
@@ -21,6 +33,26 @@ export async function supervisorNode(
           total === 0
             ? "No leads to process, sir. Upload some targets and I'll get to work."
             : `All ${total} leads handled. Check the approvals queue for anything pending your review.`
+        ),
+      ],
+    };
+  }
+
+  if (
+    state.threadId &&
+    (await isPipelineRunCancelled(state.threadId, state.userId))
+  ) {
+    logger.info("supervisor", "Run cancelled in DB — exiting pipeline");
+    return {
+      currentLeadIndex: state.leads.length,
+      researchData: null,
+      draftMessage: null,
+      approvalStatus: "none",
+      stopRequested: true,
+      nextAgent: "supervisor",
+      messages: [
+        new AIMessage(
+          "Stopping here — run was cancelled. Drafts already created stay in Approvals."
         ),
       ],
     };
@@ -66,7 +98,8 @@ export async function supervisorNode(
           research_data: state.researchData,
           enrichment_score: state.researchData.score,
         })
-        .eq("id", lead.id);
+        .eq("id", lead.id)
+        .eq("user_id", state.userId);
     } catch (e) {
       logger.error("supervisor", `Dry run lead update failed: ${e}`);
     }

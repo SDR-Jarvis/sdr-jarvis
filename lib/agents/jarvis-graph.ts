@@ -73,7 +73,8 @@ async function approvalGateNode(
         research_data: state.researchData,
         enrichment_score: state.researchData?.score ?? null,
       })
-      .eq("id", lead.id);
+      .eq("id", lead.id)
+      .eq("user_id", state.userId);
 
     await supabase.from("audit_log").insert({
       user_id: state.userId,
@@ -163,6 +164,7 @@ export async function startCampaignRun(params: {
 
   const initialState = {
     userId: params.userId,
+    threadId,
     campaignId: params.campaignId,
     leads: params.leads,
     currentLeadIndex: 0,

@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
     .from("leads")
     .select("first_name, last_name, email, company")
     .eq("id", approval.lead_id)
+    .eq("user_id", user.id)
     .single();
 
   const leadName = lead ? `${lead.first_name} ${lead.last_name}` : "Unknown";
@@ -77,17 +78,20 @@ export async function POST(req: NextRequest) {
     await supabase
       .from("approvals")
       .update({ status: "rejected", reviewed_at: new Date().toISOString() })
-      .eq("id", approvalId);
+      .eq("id", approvalId)
+      .eq("user_id", user.id);
 
     await supabase
       .from("interactions")
       .update({ status: "failed" })
-      .eq("id", approval.interaction_id);
+      .eq("id", approval.interaction_id)
+      .eq("user_id", user.id);
 
     await supabase
       .from("leads")
       .update({ status: "archived" })
-      .eq("id", approval.lead_id);
+      .eq("id", approval.lead_id)
+      .eq("user_id", user.id);
 
     await supabase.from("audit_log").insert({
       user_id: user.id,
@@ -104,6 +108,7 @@ export async function POST(req: NextRequest) {
     .from("interactions")
     .select("metadata, sequence_step, ai_draft_subject, ai_draft_body")
     .eq("id", approval.interaction_id)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   const { data: profileRow } = await supabase
@@ -188,21 +193,25 @@ export async function POST(req: NextRequest) {
     await supabase
       .from("approvals")
       .update({ preview_subject: subject, preview_body: bodyToSend })
-      .eq("id", approvalId);
+      .eq("id", approvalId)
+      .eq("user_id", user.id);
 
     await supabase
       .from("interactions")
       .update({ subject, body: bodyToSend })
-      .eq("id", approval.interaction_id);
+      .eq("id", approval.interaction_id)
+      .eq("user_id", user.id);
   } else if (bodyToSend !== emailBody) {
     await supabase
       .from("approvals")
       .update({ preview_body: bodyToSend })
-      .eq("id", approvalId);
+      .eq("id", approvalId)
+      .eq("user_id", user.id);
     await supabase
       .from("interactions")
       .update({ body: bodyToSend })
-      .eq("id", approval.interaction_id);
+      .eq("id", approval.interaction_id)
+      .eq("user_id", user.id);
   }
 
   const aiSub =
@@ -236,7 +245,8 @@ export async function POST(req: NextRequest) {
       status: result.success ? "approved" : "rejected",
       reviewed_at: new Date().toISOString(),
     })
-    .eq("id", approvalId);
+    .eq("id", approvalId)
+    .eq("user_id", user.id);
 
   const existingMeta = (interactionRow?.metadata ?? {}) as Record<string, unknown>;
 
@@ -258,7 +268,8 @@ export async function POST(req: NextRequest) {
         error: result.error,
       },
     })
-    .eq("id", approval.interaction_id);
+    .eq("id", approval.interaction_id)
+    .eq("user_id", user.id);
 
   await serviceClient
     .from("leads")
@@ -266,7 +277,8 @@ export async function POST(req: NextRequest) {
       status: result.success ? "sent" : "bounced",
       last_contacted_at: result.success ? new Date().toISOString() : undefined,
     })
-    .eq("id", approval.lead_id);
+    .eq("id", approval.lead_id)
+    .eq("user_id", user.id);
 
   await serviceClient.from("audit_log").insert({
     user_id: user.id,
@@ -304,6 +316,7 @@ export async function POST(req: NextRequest) {
       .select("id")
       .eq("action", "slack_email_sent_notify")
       .eq("resource_id", approvalId)
+      .eq("user_id", user.id)
       .limit(1)
       .maybeSingle();
 
@@ -312,6 +325,7 @@ export async function POST(req: NextRequest) {
         .from("campaigns")
         .select("name")
         .eq("id", approval.campaign_id)
+        .eq("user_id", user.id)
         .single();
       const campaignLabel = campRow?.name ?? "Campaign";
       void sendSlackNotification(

@@ -138,6 +138,7 @@ async function handleSendEvent(event: ResendSendEvent): Promise<NextResponse> {
         .from("interactions")
         .update({ status: "delivered" })
         .eq("id", interaction.id)
+        .eq("user_id", interaction.user_id)
         .in("status", ["sent"]);
       break;
     }
@@ -146,7 +147,8 @@ async function handleSendEvent(event: ResendSendEvent): Promise<NextResponse> {
       await supabase
         .from("interactions")
         .update({ opened_at: new Date().toISOString() })
-        .eq("id", interaction.id);
+        .eq("id", interaction.id)
+        .eq("user_id", interaction.user_id);
 
       await supabase.from("audit_log").insert({
         user_id: interaction.user_id,
@@ -162,12 +164,14 @@ async function handleSendEvent(event: ResendSendEvent): Promise<NextResponse> {
       await supabase
         .from("interactions")
         .update({ status: "bounced" })
-        .eq("id", interaction.id);
+        .eq("id", interaction.id)
+        .eq("user_id", interaction.user_id);
 
       await supabase
         .from("leads")
         .update({ status: "bounced" })
-        .eq("id", interaction.lead_id);
+        .eq("id", interaction.lead_id)
+        .eq("user_id", interaction.user_id);
 
       await supabase.from("audit_log").insert({
         user_id: interaction.user_id,
@@ -203,7 +207,8 @@ async function handleSendEvent(event: ResendSendEvent): Promise<NextResponse> {
       await supabase
         .from("interactions")
         .update({ status: "replied", replied_at: new Date().toISOString() })
-        .eq("id", interaction.id);
+        .eq("id", interaction.id)
+        .eq("user_id", interaction.user_id);
       break;
     }
   }
@@ -246,7 +251,8 @@ async function handleInbound(event: ResendReceivedEvent): Promise<NextResponse> 
   await supabase
     .from("interactions")
     .update({ status: "replied", replied_at: new Date().toISOString() })
-    .eq("id", interaction.id);
+    .eq("id", interaction.id)
+    .eq("user_id", interaction.user_id);
 
   await supabase.from("audit_log").insert({
     user_id: interaction.user_id,
@@ -281,13 +287,15 @@ async function handleInbound(event: ResendReceivedEvent): Promise<NextResponse> 
     .from("leads")
     .select("first_name, last_name, title, company")
     .eq("id", interaction.lead_id)
+    .eq("user_id", interaction.user_id)
     .single();
 
   if (lead) {
     await supabase
       .from("leads")
       .update({ status: "replied" })
-      .eq("id", interaction.lead_id);
+      .eq("id", interaction.lead_id)
+      .eq("user_id", interaction.user_id);
 
     // Prefer the explicit `message_id` field; fall back to the headers map
     // so we still thread when Resend's top-level field is null. The headers
