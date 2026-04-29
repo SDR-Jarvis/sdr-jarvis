@@ -194,9 +194,13 @@ NEVER:
 - "Hop on a quick call"
 - "Sync up"
 
-SIGN-OFF:
-First name only on its own line.
-Then sender's company on next line if relevant.
+SIGN-OFF FORMAT:
+End the email with EXACTLY this signature, on separate lines:
+{sender_name}
+{sender_company}
+
+Do NOT use placeholders like "our team", "[name]", or "best regards".
+Always use the actual name and company provided above.
 
 FORBIDDEN PHRASES (do not use under any circumstance):
 "Awaiting your call"
@@ -326,88 +330,64 @@ type ProfileSummary = {
   product_description?: string | null;
 };
 
-function productDescriptionMentionsOutboundEmail(desc: string): boolean {
-  const d = desc.toLowerCase();
-  if (!d) return false;
-  if (!/\b(email|e-mail|inbox|newsletter|outreach|smtp|sequence|dm|dms)\b/i.test(d)) {
-    return false;
-  }
-  return /\bcold\b|\boutreach\b|\bemail\b|\bsequence\b|\binbox\b|\bnewsletter\b/i.test(d);
-}
-
-const FORBIDDEN_GENERIC_COLD_EMAIL_PITCH: RegExp[] = [
-  /writes?\s+cold\s+emails?/i,
-  /drafts?\s+cold\s+emails?/i,
-  /cold\s+email\s+tool/i,
-  /personalized\s+cold\s+emails?/i,
-  /\bcold\s+emails?\s+for\s+your\s+approval/i,
-];
-
-function pitchReflectsProductDescription(pitch: string, productDesc: string): boolean {
-  const p = pitch.toLowerCase();
-  const d = productDesc.trim().toLowerCase();
-  if (d.length < 20) return p.length >= 40;
-  const tokens = d.split(/[^a-z0-9]+/).filter((t) => t.length >= 5);
-  if (tokens.length === 0) return p.length >= 40;
-  return tokens.some((t) => p.includes(t));
-}
-
-/**
- * Body is greeting + opener + pitch separated by blank lines.
- * Product claims must be validated on the pitch only (opener may mention their stack).
- */
-function extractPitchForProductValidation(body: string): string {
-  const normalized = body.replace(/\r\n/g, "\n").trim();
-  const blocks = normalized
-    .split(/\n\s*\n/)
-    .map((b) => b.trim())
-    .filter(Boolean);
-  if (blocks.length >= 3) return blocks.slice(2).join("\n\n");
-  if (blocks.length === 2) return blocks[1] ?? "";
-  return normalized;
-}
-
 function validateProductPitch(
-  pitch: string,
-  rawProductDescription: string
+  body: string,
+  productDescription: string | null
 ): { isValid: boolean; reason?: string } {
-  const p = pitch.trim();
-  const desc = (rawProductDescription || "").trim();
-  if (!p) {
-    return { isValid: false, reason: "Empty pitch segment" };
-  }
-  for (const pattern of FORBIDDEN_PRODUCT_INVENTIONS) {
+  const normalizedBody = body.trim();
+  if (!normalizedBody) return { isValid: false, reason: "Empty body" };
+
+  const FORBIDDEN_CLICHES: RegExp[] = [
+    /awaiting your call/i,
+    /best regards/i,
+    /sincerely/i,
+    /game[- ]changer/i,
+    /thrilled to/i,
+    /excited to (work|share|connect)/i,
+    /seamlessly/i,
+  ];
+  for (const pattern of FORBIDDEN_CLICHES) {
     pattern.lastIndex = 0;
-    if (pattern.test(p)) {
-      return {
-        isValid: false,
-        reason: `AI invented capability: matched ${pattern}`,
-      };
+    if (pattern.test(normalizedBody)) {
+      return { isValid: false, reason: `Contains cliche: ${pattern}` };
     }
   }
 
-  if (!productDescriptionMentionsOutboundEmail(desc)) {
-    for (const pattern of FORBIDDEN_GENERIC_COLD_EMAIL_PITCH) {
-      pattern.lastIndex = 0;
-      if (pattern.test(p)) {
+  const productDescLower = (productDescription || "").toLowerCase();
+  const inventionChecks: Array<{ pattern: RegExp; requiresWords: string[] }> = [
+    {
+      pattern: /writes? (cold |personalized )?emails?/i,
+      requiresWords: ["email", "outreach", "cold", "message", "mail"],
+    },
+    {
+      pattern: /microservices?/i,
+      requiresWords: ["microservice", "infrastructure", "devops"],
+    },
+    {
+      pattern: /sentiment analysis/i,
+      requiresWords: ["sentiment", "emotion", "nlp"],
+    },
+  ];
+  for (const { pattern, requiresWords } of inventionChecks) {
+    pattern.lastIndex = 0;
+    if (pattern.test(normalizedBody)) {
+      const hasSupport = requiresWords.some((w) => productDescLower.includes(w));
+      if (!hasSupport) {
         return {
           isValid: false,
-          reason: `Generic cold-email pitch not allowed for this product: ${pattern}`,
+          reason: `Pitch claims "${pattern}" but description doesn't support it`,
         };
       }
     }
   }
 
-  if (desc.length >= 20 && !pitchReflectsProductDescription(p, desc)) {
-    return {
-      isValid: false,
-      reason: "Pitch should reflect words or ideas from the product description",
-    };
+  for (const pattern of FORBIDDEN_PRODUCT_INVENTIONS) {
+    pattern.lastIndex = 0;
+    if (pattern.test(normalizedBody)) {
+      return { isValid: false, reason: `AI invented capability: matched ${pattern}` };
+    }
   }
-
-  if (desc.length < 20 && p.length < 35) {
-    return { isValid: false, reason: "Pitch too thin when product context is vague" };
-  }
+  if (normalizedBody.length < 50) return { isValid: false, reason: "Body too short (likely template stub)" };
 
   return { isValid: true };
 }
@@ -418,27 +398,25 @@ function generateFallbackPitch(
   rawProductDescription: string
 ): string {
   const firstName = lead.firstName?.trim() || "there";
-  const senderName = profile.full_name?.trim().split(/\s+/)[0] ?? "";
-  const senderCompany =
-    profile.company_name?.trim() || (senderName ? `${senderName}'s company` : "our team");
+  const senderName = profile.full_name?.trim().split(/\s+/)[0] ?? "there";
+  const senderCompany = profile.company_name?.trim() || "my company";
   const company = lead.company?.trim() || "your company";
-  const desc = rawProductDescription.trim();
-
-  if (desc.length >= 20) {
-    const snippet = desc.length > 280 ? `${desc.slice(0, 280)}…` : desc;
-    return `Hi ${firstName},
-
-Came across ${company} — ${snippet}
-
-Thought it might be relevant to what you're building. Worth a quick look?
-
-${senderName}
-${senderCompany}`.trim();
-  }
-
+  const productDesc = rawProductDescription.trim();
+  const productSummary =
+    productDesc.length > 0
+      ? productDesc.split(".")[0]?.slice(0, 100).trim()
+      : null;
+  const opener = lead.title?.trim()
+    ? `Saw you're ${lead.title} at ${company} — reaching out because outbound at this stage is its own challenge.`
+    : `Came across ${company} and wanted to reach out.`;
+  const pitch = productSummary
+    ? `I'm building ${senderCompany} — ${productSummary}. Curious if this is useful for what you're working on?`
+    : `I'm working on something at ${senderCompany} for founders like you doing their own outreach. Would love to share more if useful.`;
   return `Hi ${firstName},
 
-Came across ${company} — I'm building something at ${senderCompany} and reaching out to folks in your space. Happy to share more if it's useful.
+${opener}
+
+${pitch}
 
 ${senderName}
 ${senderCompany}`.trim();
@@ -553,8 +531,8 @@ export async function outreachNode(
     userContent = context;
   } else {
     appendSignatureBlock = false;
-    let senderName = state.senderDisplayName || "Founder";
-    let senderCompany = "";
+    let senderName = state.senderDisplayName || "there";
+    let senderCompany = "my project";
     let icpDescription = "";
     let formalityLevel = "professional-casual";
     let signOff = state.senderSignoff?.trim() || "Best";
@@ -569,9 +547,19 @@ export async function outreachNode(
 
       const p = (profile ?? null) as Record<string, unknown> | null;
       if (p) {
-        if (typeof p.full_name === "string" && p.full_name.trim()) senderName = p.full_name.trim();
-        if (typeof p.company_name === "string" && p.company_name.trim())
+        const fullName =
+          typeof p.full_name === "string" ? p.full_name.trim() : "";
+        const emailName =
+          typeof p.email === "string" && p.email.includes("@")
+            ? p.email.split("@")[0]?.trim() ?? ""
+            : "";
+        senderName =
+          fullName.split(/\s+/)[0] || emailName || senderName || "there";
+        if (typeof p.company_name === "string" && p.company_name.trim()) {
           senderCompany = p.company_name.trim();
+        } else if (fullName) {
+          senderCompany = fullName;
+        }
         rawProductDescForValidation = resolveProductDescriptionFromProfile(p);
         if (typeof p.icp_description === "string" && p.icp_description.trim())
           icpDescription = p.icp_description.trim();
@@ -638,6 +626,13 @@ export async function outreachNode(
           rawProductDescForValidation.slice(0, 100) || "EMPTY",
         product_description_length: rawProductDescForValidation.length,
       });
+      console.log("[Outreach] Generating draft for:", {
+        user_id: state.userId,
+        product_desc_first_50:
+          rawProductDescForValidation.slice(0, 50) || "EMPTY",
+        sender_name: senderName,
+        sender_company: senderCompany,
+      });
 
       userContent =
         "Write the email now. Use Hi [FirstName], as the greeting line (replace [FirstName] with the lead's first name only). Keep it concise and follow the JSON format exactly.";
@@ -653,6 +648,12 @@ export async function outreachNode(
         company_name: senderCompany || null,
         product_description_first_100: "EMPTY",
         product_description_length: 0,
+      });
+      console.log("[Outreach] Generating draft for:", {
+        user_id: state.userId,
+        product_desc_first_50: "EMPTY",
+        sender_name: senderName,
+        sender_company: senderCompany,
       });
       systemPrompt = fillInitialOutreachPrompt({
         research,
@@ -705,6 +706,7 @@ export async function outreachNode(
       { role: "system", content: systemPrompt },
       { role: "user", content: fullUser },
     ]);
+    console.log("[Outreach] LLM draft generated, validating...");
 
     const text =
       typeof response.content === "string"
@@ -734,9 +736,10 @@ export async function outreachNode(
     if (!isFollowUp) {
       let lastText = text;
       let validation = validateProductPitch(
-        extractPitchForProductValidation(draft.body),
-        rawProductDescForValidation
+        draft.body,
+        rawProductDescForValidation || null
       );
+      console.log("[Outreach] Validation result:", validation);
       let retries = 0;
       const conversation: { role: string; content: string }[] = [
         { role: "system", content: systemPrompt },
@@ -769,12 +772,14 @@ export async function outreachNode(
             research.opener_signal ?? research.talkingPoints[0] ?? "Research-led angle.";
         }
         validation = validateProductPitch(
-          extractPitchForProductValidation(draft.body),
-          rawProductDescForValidation
+          draft.body,
+          rawProductDescForValidation || null
         );
+        console.log("[Outreach] Validation result:", validation);
         retries++;
       }
       if (!validation.isValid) {
+        console.warn("[Outreach] Falling back due to:", validation.reason);
         logger.error("outreach", "[Outreach] Falling back to template pitch");
         draft.body = generateFallbackPitch(
           lead,
@@ -821,10 +826,12 @@ export async function outreachNode(
         }
         if (!isFollowUp) {
           const v = validateProductPitch(
-            extractPitchForProductValidation(draft.body),
-            rawProductDescForValidation
+            draft.body,
+            rawProductDescForValidation || null
           );
+          console.log("[Outreach] Validation result:", v);
           if (!v.isValid) {
+            console.warn("[Outreach] Falling back due to:", v.reason);
             logger.warn(
               "outreach",
               `Revision failed product validation: ${v.reason}, using fallback pitch`
@@ -854,10 +861,12 @@ export async function outreachNode(
 
     if (!isFollowUp) {
       const v = validateProductPitch(
-        extractPitchForProductValidation(draft.body),
-        rawProductDescForValidation
+        draft.body,
+        rawProductDescForValidation || null
       );
+      console.log("[Outreach] Validation result:", v);
       if (!v.isValid) {
+        console.warn("[Outreach] Falling back due to:", v.reason);
         logger.warn(
           "outreach",
           `Final draft failed product validation: ${v.reason}, using fallback pitch`
