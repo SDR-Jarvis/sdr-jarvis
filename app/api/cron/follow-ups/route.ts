@@ -127,6 +127,7 @@ export async function GET(req: NextRequest) {
         .select("sequence_step, subject, body, sent_at")
         .eq("lead_id", lead.id)
         .eq("campaign_id", lead.campaign_id)
+        .eq("user_id", lead.user_id)
         .eq("type", "email_outbound")
         .in("status", ["sent", "delivered"])
         .order("sequence_step", { ascending: false })
@@ -143,6 +144,7 @@ export async function GET(req: NextRequest) {
         .select("id", { count: "exact", head: true })
         .eq("lead_id", lead.id)
         .eq("campaign_id", lead.campaign_id)
+        .eq("user_id", lead.user_id)
         .eq("type", "email_reply");
 
       if (replyCount && replyCount > 0) continue;
@@ -296,7 +298,8 @@ export async function GET(req: NextRequest) {
         await supabase
           .from("leads")
           .update({ status: "pending_approval" })
-          .eq("id", candidate.lead_id);
+          .eq("id", candidate.lead_id)
+          .eq("user_id", candidate.user_id);
 
         await supabase.from("audit_log").insert({
           user_id: candidate.user_id,

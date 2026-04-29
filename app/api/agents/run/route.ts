@@ -50,10 +50,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const { data: campaignRow, error: campaignError } = await supabase
+    .from("campaigns")
+    .select("id")
+    .eq("id", campaignId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (campaignError || !campaignRow) {
+    return NextResponse.json(
+      { error: "Campaign not found" },
+      { status: 404 }
+    );
+  }
+
   const { data: rawLeads, error: leadsError } = await supabase
     .from("leads")
     .select("*")
     .eq("campaign_id", campaignId)
+    .eq("user_id", user.id)
     .in("status", ["new", "researched", "draft_ready"])
     .order("created_at", { ascending: true });
 
@@ -148,7 +163,8 @@ export async function POST(req: NextRequest) {
   await supabase
     .from("campaigns")
     .update({ status: "active" })
-    .eq("id", campaignId);
+    .eq("id", campaignId)
+    .eq("user_id", user.id);
 
   const encoder = new TextEncoder();
   const recursionLimit = Math.max(leads.length * 6 + 10, 50);
@@ -189,6 +205,7 @@ export async function POST(req: NextRequest) {
             .from("agent_runs")
             .select("id, started_at")
             .eq("thread_id", threadId)
+            .eq("user_id", user.id)
             .single();
 
           if (runRow?.started_at) {
@@ -198,6 +215,7 @@ export async function POST(req: NextRequest) {
               .select("id")
               .eq("action", "slack_pipeline_approvals")
               .eq("resource_id", runRow.id)
+              .eq("user_id", user.id)
               .limit(1)
               .maybeSingle();
 
@@ -222,6 +240,7 @@ export async function POST(req: NextRequest) {
                   .from("campaigns")
                   .select("name")
                   .eq("id", campaignId)
+                  .eq("user_id", user.id)
                   .single();
                 const base =
                   process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
@@ -271,7 +290,8 @@ export async function POST(req: NextRequest) {
         await supabase
           .from("agent_runs")
           .update({ status: "failed", error_message: errMsg })
-          .eq("thread_id", threadId);
+          .eq("thread_id", threadId)
+          .eq("user_id", user.id);
       } finally {
         await cleanup();
         controller.close();

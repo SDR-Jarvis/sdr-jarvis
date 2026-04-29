@@ -175,7 +175,55 @@ export default function OnboardingStepPage() {
     setLoading(true);
     setError("");
     try {
-      await updateProfile({ product_description: v });
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select(
+          "full_name, timezone, tone_preferences, compliance_opt_out_line, company_name, role"
+        )
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const oauthName =
+        (user.user_metadata?.full_name as string | undefined) ??
+        (user.user_metadata?.name as string | undefined) ??
+        null;
+      const existing = (existingProfile ?? {}) as {
+        full_name?: string | null;
+        timezone?: string | null;
+        tone_preferences?: Record<string, unknown> | null;
+        compliance_opt_out_line?: string | null;
+        company_name?: string | null;
+        role?: string | null;
+      };
+
+      const nextTone =
+        existing.tone_preferences && Object.keys(existing.tone_preferences).length > 0
+          ? existing.tone_preferences
+          : {
+              formality: "professional-casual",
+              humor: true,
+            };
+
+      await updateProfile({
+        product_description: v,
+        full_name: existing.full_name ?? oauthName ?? null,
+        timezone: existing.timezone ?? "America/Los_Angeles",
+        tone_preferences: nextTone,
+        compliance_opt_out_line:
+          existing.compliance_opt_out_line ??
+          "Reply 'no thanks' if not relevant.",
+        company_name:
+          existing.company_name ??
+          ((user.user_metadata?.company as string | undefined) ?? null),
+        role:
+          existing.role ??
+          ((user.user_metadata?.job_title as string | undefined) ?? null),
+      });
       router.push("/onboarding/icp");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save.");

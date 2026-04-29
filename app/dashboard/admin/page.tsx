@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import {
   Users,
@@ -23,7 +23,9 @@ export default async function AdminPage() {
   const allowed = await userHasAdminAccess(supabase, user.id, user.email ?? undefined);
   if (!allowed) redirect("/dashboard");
 
-  // Fetch all stats in parallel
+  const adminDb = createServiceClient();
+
+  // Fetch all stats in parallel (service role: platform-wide metrics for admins only)
   const [
     usersRes,
     campaignsRes,
@@ -34,14 +36,14 @@ export default async function AdminPage() {
     repliesRes,
     recentUsersRes,
   ] = await Promise.all([
-    supabase.from("profiles").select("*", { count: "exact", head: true }),
-    supabase.from("campaigns").select("id", { count: "exact", head: true }),
-    supabase.from("leads").select("id", { count: "exact", head: true }),
-    supabase.from("interactions").select("id, status", { count: "exact" }).eq("status", "sent"),
-    supabase.from("approvals").select("id", { count: "exact", head: true }),
-    supabase.from("agent_runs").select("id", { count: "exact", head: true }),
-    supabase.from("interactions").select("id", { count: "exact", head: true }).in("status", ["replied", "qualified"]),
-    supabase
+    adminDb.from("profiles").select("*", { count: "exact", head: true }),
+    adminDb.from("campaigns").select("id", { count: "exact", head: true }),
+    adminDb.from("leads").select("id", { count: "exact", head: true }),
+    adminDb.from("interactions").select("id, status", { count: "exact" }).eq("status", "sent"),
+    adminDb.from("approvals").select("id", { count: "exact", head: true }),
+    adminDb.from("agent_runs").select("id", { count: "exact", head: true }),
+    adminDb.from("interactions").select("id", { count: "exact", head: true }).in("status", ["replied", "qualified"]),
+    adminDb
       .from("profiles")
       .select("*")
       .order("created_at", { ascending: false })
@@ -59,7 +61,7 @@ export default async function AdminPage() {
 
   // Users active in last 7 days (based on agent_runs)
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const { count: activeWeekly } = await supabase
+  const { count: activeWeekly } = await adminDb
     .from("agent_runs")
     .select("user_id", { count: "exact", head: true })
     .gte("started_at", sevenDaysAgo);
@@ -67,7 +69,7 @@ export default async function AdminPage() {
   // Users active today
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
-  const { count: activeToday } = await supabase
+  const { count: activeToday } = await adminDb
     .from("agent_runs")
     .select("user_id", { count: "exact", head: true })
     .gte("started_at", todayStart.toISOString());

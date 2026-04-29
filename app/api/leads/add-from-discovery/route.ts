@@ -82,11 +82,47 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Campaign not found or not yours" }, { status: 404 });
   }
 
+  const { data: existingRows } = await supabase
+    .from("leads")
+    .select("email, linkedin_url")
+    .eq("campaign_id", campaign_id)
+    .eq("user_id", user.id);
+
+  const existingEmails = new Set(
+    (existingRows ?? [])
+      .map((l) =>
+        typeof l.email === "string" ? l.email.trim().toLowerCase() : ""
+      )
+      .filter(Boolean)
+  );
+  const existingUrls = new Set(
+    (existingRows ?? [])
+      .map((l) =>
+        typeof l.linkedin_url === "string" ? l.linkedin_url.trim() : ""
+      )
+      .filter(Boolean)
+  );
+
   const rows: Record<string, unknown>[] = [];
 
   for (const item of rawLeads as DiscoveryLeadInput[]) {
     const email = typeof item.email === "string" ? item.email.trim() : "";
     if (!email.includes("@") || email.length < 4) continue;
+
+    const emailKey = email.toLowerCase();
+    if (existingEmails.has(emailKey)) {
+      console.log("[Add Leads] Skipping duplicate email:", email);
+      continue;
+    }
+
+    const urlEarly =
+      typeof item.url === "string" && item.url.startsWith("http") ? item.url : null;
+    const linkedinEarly =
+      urlEarly?.includes("linkedin.com") ? urlEarly.trim() : null;
+    if (linkedinEarly && existingUrls.has(linkedinEarly)) {
+      console.log("[Add Leads] Skipping duplicate LinkedIn:", linkedinEarly);
+      continue;
+    }
 
     const url = typeof item.url === "string" && item.url.startsWith("http") ? item.url : null;
     const companyNorm =
@@ -145,14 +181,22 @@ export async function POST(req: NextRequest) {
       icp_match_reason: scored.icp_match_reason || null,
       enrichment_data: Object.keys(enrichment).length ? enrichment : {},
     });
+
+    existingEmails.add(emailKey);
+    const li = url?.includes("linkedin.com") ? url.trim() : null;
+    if (li) existingUrls.add(li);
   }
 
   if (rows.length === 0) {
-    console.warn("[add-from-discovery] No valid rows after validation");
-    return NextResponse.json(
-      { error: "No leads passed validation (email + ICP rules)." },
-      { status: 400 }
-    );
+    console.warn("[add-from-discovery] No valid rows after validation / dedup");
+    return NextResponse.json({
+      success: true,
+      added: 0,
+      count: 0,
+      campaign_id: campaign.id,
+      campaign_name: campaign.name,
+      message: "All leads already in this campaign or none passed validation.",
+    });
   }
 
   console.log("[Add Leads API] Inserting:", rows.length, "leads");

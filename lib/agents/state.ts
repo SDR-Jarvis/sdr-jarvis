@@ -68,6 +68,18 @@ export const JarvisState = Annotation.Root({
     default: () => "",
   }),
 
+  /** LangGraph thread id — matches agent_runs.thread_id for cancel checks */
+  threadId: Annotation<string>({
+    reducer: (_, y) => y,
+    default: () => "",
+  }),
+
+  /** Set when DB run is cancelled so the final supervisor hop shows the right message */
+  stopRequested: Annotation<boolean>({
+    reducer: (a, b) => a || b,
+    default: () => false,
+  }),
+
   campaignId: Annotation<string | null>({
     reducer: (_, y) => y ?? null,
     default: () => null,

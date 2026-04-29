@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
     .from("interactions")
     .select("id, subject, body, campaign_id, metadata")
     .eq("lead_id", leadId)
+    .eq("user_id", user.id)
     .eq("type", "email_outbound")
     .in("status", ["sent", "delivered"])
     .order("created_at", { ascending: false })
@@ -75,14 +76,16 @@ export async function POST(req: NextRequest) {
   await serviceClient
     .from("leads")
     .update({ status: "replied" })
-    .eq("id", leadId);
+    .eq("id", leadId)
+    .eq("user_id", user.id);
 
   // Update the outbound interaction status
   if (lastOutbound) {
     await serviceClient
       .from("interactions")
       .update({ status: "replied", replied_at: new Date().toISOString() })
-      .eq("id", lastOutbound.id);
+      .eq("id", lastOutbound.id)
+      .eq("user_id", user.id);
   }
 
   // Run the Qualifier agent
@@ -164,7 +167,8 @@ export async function POST(req: NextRequest) {
       await serviceClient2
         .from("leads")
         .update({ status: "qualified", last_contacted_at: new Date().toISOString() })
-        .eq("id", leadId);
+        .eq("id", leadId)
+        .eq("user_id", user.id);
 
       await serviceClient2.from("audit_log").insert({
         user_id: user.id,

@@ -25,10 +25,12 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLead
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState("");
   const [resetting, setResetting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [dryRun, setDryRun] = useState(false);
   const router = useRouter();
   const logsEndRef = useRef<HTMLDivElement>(null);
   const finalStateRef = useRef<RunState>("idle");
+  const abortRef = useRef<AbortController | null>(null);
 
   function addLog(message: string) {
     const time = new Date().toLocaleTimeString("en-US", {
@@ -76,6 +78,7 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLead
     finalStateRef.current = "running";
     setLogs([]);
     setError("");
+    abortRef.current = new AbortController();
     addLog(
       `${dryRun ? "Dry run — " : ""}Starting pipeline for ${newLeadsCount} lead${newLeadsCount > 1 ? "s" : ""}…`
     );
@@ -85,6 +88,7 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLead
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaignId, dryRun }),
+        signal: abortRef.current.signal,
       });
 
       if (!res.ok) {
@@ -153,13 +157,50 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLead
         addLog("Pipeline complete.");
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      setState("error");
-      addLog(`Failed: ${msg}`);
+      if (err instanceof Error && err.name === "AbortError") {
+        addLog("Stream aborted (stop requested).");
+        setState("done");
+        finalStateRef.current = "done";
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        setState("error");
+        addLog(`Failed: ${msg}`);
+      }
     }
 
+    abortRef.current = null;
     router.refresh();
+  }
+
+  async function handleStopPipeline() {
+    if (
+      !window.confirm(
+        "Stop the pipeline? Drafts already created will remain in Approvals."
+      )
+    ) {
+      return;
+    }
+    setIsStopping(true);
+    try {
+      const response = await fetch("/api/agents/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaign_id: campaignId }),
+      });
+      const result = (await response.json()) as { error?: string; stopped_runs?: number };
+      if (!response.ok) {
+        window.alert(result.error ?? "Could not stop pipeline");
+        return;
+      }
+      abortRef.current?.abort();
+      window.alert(`Stopped. ${result.stopped_runs ?? 0} run(s) cancelled.`);
+    } catch {
+      window.alert("Something went wrong");
+    } finally {
+      setIsStopping(false);
+      router.refresh();
+    }
   }
 
   const isStuckRunning = campaignStatus === "running" && state !== "running";
@@ -221,6 +262,17 @@ export function RunPipelineButton({ campaignId, canRun, newLeadsCount, totalLead
               ? `Run Pipeline (${newLeadsCount} lead${newLeadsCount > 1 ? "s" : ""})`
               : "No new leads to process"}
         </button>
+
+        {state === "running" && (
+          <button
+            type="button"
+            onClick={handleStopPipeline}
+            disabled={isStopping}
+            className="text-sm font-medium text-red-400 hover:text-red-300 disabled:opacity-50"
+          >
+            {isStopping ? "Stopping…" : "Stop pipeline"}
+          </button>
+        )}
       </div>
 
       {/* Live Log Panel */}

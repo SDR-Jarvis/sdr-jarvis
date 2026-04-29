@@ -6,6 +6,7 @@ import {
   searchWeb,
   searchLinkedIn,
 } from "@/lib/agents/tools";
+import { isPipelineRunCancelled } from "@/lib/agents/pipeline-cancel";
 import type { JarvisStateType, ResearchData } from "../state";
 
 const RESEARCHER_SYSTEM_PROMPT = `
@@ -279,6 +280,24 @@ export async function researcherNode(
   if (!lead) {
     logger.error("researcher", "No lead at current index");
     return { errors: ["Researcher: no lead at current index"] };
+  }
+
+  if (
+    state.threadId &&
+    (await isPipelineRunCancelled(state.threadId, state.userId))
+  ) {
+    logger.info("researcher", "Run cancelled — skipping research");
+    return {
+      currentLeadIndex: state.leads.length,
+      researchData: null,
+      draftMessage: null,
+      approvalStatus: "none",
+      stopRequested: true,
+      nextAgent: "supervisor",
+      messages: [
+        new AIMessage("Research cancelled — pipeline stopped."),
+      ],
+    };
   }
 
   const name = `${lead.firstName} ${lead.lastName}`;
