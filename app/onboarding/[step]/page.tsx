@@ -107,6 +107,7 @@ export default function OnboardingStepPage() {
   const [sentCount, setSentCount] = useState(0);
   const [didCelebrate, setDidCelebrate] = useState(false);
   const [launchStarted, setLaunchStarted] = useState(false);
+  const [refiningProduct, setRefiningProduct] = useState(false);
 
   useEffect(() => {
     if (mounted.current) return;
@@ -171,7 +172,12 @@ export default function OnboardingStepPage() {
 
   async function handleProductContinue() {
     const v = productDescription.trim();
-    if (v.length < 10) return;
+    const words = v.split(/\s+/).filter(Boolean);
+    const MIN_PRODUCT_WORDS = 15;
+    if (words.length < MIN_PRODUCT_WORDS) {
+      setError(`Add ${MIN_PRODUCT_WORDS - words.length} more words to continue.`);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -234,7 +240,12 @@ export default function OnboardingStepPage() {
 
   async function handleIcpContinue() {
     const v = icpDescription.trim();
-    if (v.length < 10) return;
+    const words = v.split(/\s+/).filter(Boolean);
+    const MIN_ICP_WORDS = 12;
+    if (words.length < MIN_ICP_WORDS) {
+      setError(`Add ${MIN_ICP_WORDS - words.length} more words to continue.`);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -243,6 +254,32 @@ export default function OnboardingStepPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save.");
       setLoading(false);
+    }
+  }
+
+  async function refineProductWithAI() {
+    const shortInput = productDescription.trim();
+    if (!shortInput) return;
+    setRefiningProduct(true);
+    setError("");
+    try {
+      const res = await fetch("/api/refine-description", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "product", shortInput }),
+      });
+
+      const data = (await res.json()) as { refined?: string; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? `Refine failed (${res.status})`);
+      }
+      if (data.refined?.trim()) {
+        setProductDescription(data.refined.trim());
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not refine.");
+    } finally {
+      setRefiningProduct(false);
     }
   }
 
@@ -501,8 +538,62 @@ export default function OnboardingStepPage() {
   }
 
   const progress = progressPercent(step);
-  const canContinueProduct = productDescription.trim().length >= 10;
-  const canContinueIcp = icpDescription.trim().length >= 10;
+  const MIN_PRODUCT_WORDS = 15;
+  const MIN_ICP_WORDS = 12;
+  const productWordCount = productDescription.trim().split(/\s+/).filter(Boolean)
+    .length;
+  const icpWordCount = icpDescription.trim().split(/\s+/).filter(Boolean)
+    .length;
+
+  const getProductHint = () => {
+    if (productWordCount === 0) return null;
+    if (productWordCount < 15) {
+      return {
+        type: "warning" as const,
+        message:
+          "Add more detail. What specific problem do you solve? Who exactly is your customer?",
+      };
+    }
+    if (productWordCount < 25) {
+      return {
+        type: "info" as const,
+        message:
+          "Good start. Add a specific example of how the product works for even better emails.",
+      };
+    }
+    return {
+      type: "success" as const,
+      message: "Great description. Jarvis will write strong emails with this context.",
+    };
+  };
+
+  const getIcpHint = () => {
+    if (icpWordCount === 0) return null;
+    if (icpWordCount < 12) {
+      return {
+        type: "warning" as const,
+        message:
+          "Be more specific. What size company? What stage? What industry exactly?",
+      };
+    }
+    if (icpWordCount < 20) {
+      return {
+        type: "info" as const,
+        message:
+          "Better. Add a specific signal — recent funding, tool stack, or challenge they face.",
+      };
+    }
+    return {
+      type: "success" as const,
+      message: "Sharp ICP. Jarvis will find precise matches.",
+    };
+  };
+
+  const productHint = getProductHint();
+  const icpHint = getIcpHint();
+
+  const canContinueProduct = productWordCount >= MIN_PRODUCT_WORDS;
+  const canContinueIcp = icpWordCount >= MIN_ICP_WORDS;
   const canContinueUnlock =
     /^\S+@\S+\.\S+$/.test(fromEmail.trim()) && previewLeads.length > 0;
 
@@ -530,21 +621,91 @@ export default function OnboardingStepPage() {
           <textarea
             value={productDescription}
             onChange={(e) => setProductDescription(e.target.value)}
-            rows={4}
+            rows={5}
             className="jarvis-input resize-none text-base"
-            placeholder="One sentence is fine."
+            placeholder="Example: AI-powered customer support tool for SaaS startups. Reduces ticket response time from 4 hours to 5 minutes by suggesting replies based on past tickets. Built specifically for support teams of 1-3 people who can't afford Zendesk Enterprise."
           />
+
           <p className="text-sm text-jarvis-muted">
-            We&apos;ll use this to find you the right customers automatically.
+            The clearer you are, the better Jarvis writes. Aim for 30+ words.
+            Include WHO it's for, WHAT it does, and WHY it's different.
           </p>
+
+          <div className="flex justify-between items-center text-sm">
+            <span
+              className={
+                productHint?.type === "success"
+                  ? "text-jarvis-success"
+                  : productHint?.type === "warning"
+                    ? "text-jarvis-gold"
+                    : "text-jarvis-blue"
+              }
+            >
+              {productHint?.message ?? " "}
+            </span>
+            <span className="text-jarvis-muted">{productWordCount} words</span>
+          </div>
+
           {error && <p className="text-sm text-jarvis-danger">{error}</p>}
+
+          <div className="flex items-start gap-3">
+            <button
+              type="button"
+              onClick={() => void refineProductWithAI()}
+              disabled={refiningProduct || loading || productWordCount >= 25}
+              className="rounded-md border border-jarvis-border px-4 py-2.5 text-sm text-jarvis-muted hover:text-white disabled:opacity-50"
+              title={
+                productWordCount >= 25
+                  ? "Your description is already strong—refine not needed."
+                  : "Expand your brief into a richer product description."
+              }
+            >
+              ✨ {refiningProduct ? "Refining..." : "Help me write this"}
+            </button>
+          </div>
+
+          <details className="text-sm text-jarvis-muted mt-4">
+            <summary className="cursor-pointer">See more examples</summary>
+            <div className="mt-2 space-y-2">
+              <div>
+                <strong>Legal Tech:</strong>
+                <p>
+                  "AI-powered legal contract review for small law firms. Reviews
+                  NDAs, MSAs, vendor contracts in minutes instead of hours.
+                  Highlights risky clauses and suggests redlines based on your
+                  firm's playbook."
+                </p>
+              </div>
+              <div>
+                <strong>Construction PM:</strong>
+                <p>
+                  "Project management for construction GCs. Tracks subcontractors,
+                  material orders, and project timelines in one dashboard. Built
+                  for general contractors managing 5-20 active residential or
+                  commercial projects."
+                </p>
+              </div>
+              <div>
+                <strong>Healthcare:</strong>
+                <p>
+                  "Patient scheduling and SMS reminders for independent medical
+                  practices. Reduces no-shows by 40%. Integrates with major EHR
+                  systems. Built for family medicine, dentistry, or specialty
+                  clinics with high patient volume."
+                </p>
+              </div>
+            </div>
+          </details>
+
           <button
             onClick={handleProductContinue}
-            disabled={!canContinueProduct || loading}
+            disabled={!canContinueProduct || loading || refiningProduct}
             className="jarvis-btn-primary w-full justify-center text-base py-3"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Continue →
+            {productWordCount < MIN_PRODUCT_WORDS
+              ? `Add ${MIN_PRODUCT_WORDS - productWordCount} more words`
+              : "Continue →"}
           </button>
         </>
       )}
@@ -559,11 +720,51 @@ export default function OnboardingStepPage() {
             onChange={(e) => setIcpDescription(e.target.value)}
             rows={4}
             className="jarvis-input resize-none text-base"
-            placeholder="B2B SaaS founders, 1-10 employees, post-launch but pre-Series A"
+            placeholder="Example: Founders of B2B SaaS startups, 5-30 employees, post-Series A. Building developer tools or AI infrastructure. Recently launched on Product Hunt or shipped a major feature."
           />
+
           <p className="text-sm text-jarvis-muted">
-            Be specific. The clearer your ICP, the better leads Jarvis finds.
+            Be specific about role, company size, industry, and stage. Vague
+            ICPs return vague leads.
           </p>
+
+          <div className="flex items-center justify-between text-sm">
+            <span
+              className={
+                icpHint?.type === "success"
+                  ? "text-jarvis-success"
+                  : icpHint?.type === "warning"
+                    ? "text-jarvis-gold"
+                    : "text-jarvis-blue"
+              }
+            >
+              {icpHint?.message ?? " "}
+            </span>
+            <span className="text-jarvis-muted">{icpWordCount} words</span>
+          </div>
+
+          <details className="text-sm text-jarvis-muted mt-4">
+            <summary className="cursor-pointer">See more ICP examples</summary>
+            <div className="mt-2 space-y-2">
+              <div>
+                <strong>For legal tech:</strong>
+                <p>
+                  "Founding partners or managing partners at boutique law firms
+                  with 5-20 attorneys. Focused on commercial law, corporate law,
+                  or transactional practice. US-based."
+                </p>
+              </div>
+              <div>
+                <strong>For construction PM:</strong>
+                <p>
+                  "General contractor business owners running construction firms
+                  with 10-50 employees. Working on residential or commercial
+                  projects. Annual revenue $5M-50M."
+                </p>
+              </div>
+            </div>
+          </details>
+
           <div className="flex flex-wrap gap-2">
             {SUGGESTIONS.map((text) => (
               <button
