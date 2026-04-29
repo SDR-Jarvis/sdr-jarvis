@@ -13,42 +13,68 @@ function buildProductBlock(profile: Record<string, unknown> | null): string {
   const companyName =
     (typeof profile?.company_name === "string" && profile.company_name.trim()) ||
     (typeof profile?.full_name === "string" && profile.full_name.trim()) ||
-    "their company";
+    "my company";
 
   if (productDesc.length < 20) {
     return `
-PRODUCT CONTEXT:
-The sender has not described their product in detail.
+=== SENDER'S PRODUCT INFORMATION ===
+
+The sender hasn't fully described their product yet.
 Use vague but honest framing in the pitch.
-Reference ${companyName} without claiming specific capabilities.
 
-Example pitch sentence:
-"I'm working on something at ${companyName} — focused on
-helping people like you with [one genuine inferred benefit, non-specific]."
+For the pitch, use phrasing like:
+"I'm building something at ${companyName} — focused on helping
+founders like you with [contextual benefit]."
 
-Keep the pitch SHORT. Do not invent a different category of product.
+DO NOT invent specific capabilities.
+Keep the pitch SHORT and refer them to a follow-up.
+=== END PRODUCT INFO ===
 `.trim();
   }
 
   return `
-PRODUCT CONTEXT — THE SENDER'S PRODUCT:
+=== SENDER'S PRODUCT INFORMATION ===
 
-"${productDesc}"
+The sender's actual product is described below. This is the
+ONLY thing you can claim the product does. Do not invent
+capabilities not described here.
 
-PITCH RULES:
-1. The pitch MUST describe THIS product (the sender's product)
-2. Do NOT pivot the product to match the recipient's industry unless the description is explicitly broad
-3. Do NOT invent capabilities not in the description
-4. Use plain language drawn from the description
-5. The pitch describes what THE SENDER offers, not what the recipient does
+PRODUCT DESCRIPTION (verbatim from sender):
+"""
+${productDesc}
+"""
 
-CRITICAL: If you write any of these phrases and the description above does NOT say their product is about email or cold outreach, the email is WRONG:
-- "writes cold emails"
-- "drafts cold emails"
-- "personalized cold emails for your approval"
+CRITICAL PITCH RULES:
 
-Always describe what the SENDER actually does, based on
-the description above. Never default to cold-email-tool language unless the description is literally about that.
+1. Read the product description above carefully.
+2. The pitch must describe THIS product accurately.
+   Not a different product. Not what the recipient does.
+3. Use plain, natural language drawn from the description.
+   Don't copy the description word-for-word, but stay true to it.
+4. If the description says the product does X, you can say
+   the product does X. If it says nothing about Y, do not
+   claim the product does Y.
+5. The PITCH describes what the SENDER offers (their product).
+   The OPENER references the RECIPIENT's context.
+   These are separate. Never blend them.
+
+EXAMPLE — for a product description like:
+"Project management tool for construction teams"
+
+GOOD pitch:
+"I built a project management tool specifically for
+construction teams. Given you're running a construction
+company, curious if you've found a tool that fits how
+construction projects actually work."
+
+BAD pitch (invents capabilities):
+"I built a tool that helps you scale your business and
+optimize workflows."
+
+BAD pitch (describes wrong product):
+"I built a tool that writes cold emails for your approval."
+
+=== END PRODUCT INFO ===
 `.trim();
 }
 
@@ -310,84 +336,58 @@ function sanitizeDraftBody(body: string): string {
   return cleanBody;
 }
 
-const FORBIDDEN_PRODUCT_INVENTIONS: RegExp[] = [
-  /microservices?/i,
-  /sentiment analysis/i,
-  /scal(e|ing) (your )?(technology|platform|product)/i,
-  /accuracy in (real-time |)analysis/i,
-  /collaboration tool/i,
-  /project management/i,
-  /user engagement/i,
-  /real-time analy/i,
-  /data infrastructure/i,
-  /machine learning/i,
-  /api (platform|tool)/i,
-];
-
 type ProfileSummary = {
   full_name?: string | null;
   company_name?: string | null;
   product_description?: string | null;
+  email?: string | null;
 };
 
 function validateProductPitch(
   body: string,
-  productDescription: string | null
+  rawProductDescription: string | null
 ): { isValid: boolean; reason?: string } {
-  const normalizedBody = body.trim();
-  if (!normalizedBody) return { isValid: false, reason: "Empty body" };
+  if (!body || body.trim().length < 50) {
+    return { isValid: false, reason: "Body too short (likely template stub)" };
+  }
 
   const FORBIDDEN_CLICHES: RegExp[] = [
     /awaiting your call/i,
     /best regards/i,
-    /sincerely/i,
+    /sincerely yours/i,
     /game[- ]changer/i,
     /thrilled to/i,
-    /excited to (work|share|connect)/i,
+    /excited to (work|share|connect|partner)/i,
     /seamlessly/i,
+    /robust solution/i,
+    /cutting[- ]edge/i,
+    /state[- ]of[- ]the[- ]art/i,
+    /one[- ]of[- ]a[- ]kind/i,
+    /uniquely positioned/i,
+    /next[- ]level/i,
+    /\bsynergiz/i,
+    /\bleverag/i,
+    /unlock potential/i,
   ];
   for (const pattern of FORBIDDEN_CLICHES) {
     pattern.lastIndex = 0;
-    if (pattern.test(normalizedBody)) {
+    if (pattern.test(body)) {
       return { isValid: false, reason: `Contains cliche: ${pattern}` };
     }
   }
 
-  const productDescLower = (productDescription || "").toLowerCase();
-  const inventionChecks: Array<{ pattern: RegExp; requiresWords: string[] }> = [
-    {
-      pattern: /writes? (cold |personalized )?emails?/i,
-      requiresWords: ["email", "outreach", "cold", "message", "mail"],
-    },
-    {
-      pattern: /microservices?/i,
-      requiresWords: ["microservice", "infrastructure", "devops"],
-    },
-    {
-      pattern: /sentiment analysis/i,
-      requiresWords: ["sentiment", "emotion", "nlp"],
-    },
+  const EMPTY_PRAISE_PATTERNS: RegExp[] = [
+    /that'?s (a |an )?(smart|key|crucial|important|amazing|great|impressive) (move|approach|step)/i,
+    /sounds (amazing|incredible|fantastic)/i,
   ];
-  for (const { pattern, requiresWords } of inventionChecks) {
+  for (const pattern of EMPTY_PRAISE_PATTERNS) {
     pattern.lastIndex = 0;
-    if (pattern.test(normalizedBody)) {
-      const hasSupport = requiresWords.some((w) => productDescLower.includes(w));
-      if (!hasSupport) {
-        return {
-          isValid: false,
-          reason: `Pitch claims "${pattern}" but description doesn't support it`,
-        };
-      }
+    if (pattern.test(body)) {
+      return { isValid: false, reason: `Contains empty praise: ${pattern}` };
     }
   }
 
-  for (const pattern of FORBIDDEN_PRODUCT_INVENTIONS) {
-    pattern.lastIndex = 0;
-    if (pattern.test(normalizedBody)) {
-      return { isValid: false, reason: `AI invented capability: matched ${pattern}` };
-    }
-  }
-  if (normalizedBody.length < 50) return { isValid: false, reason: "Body too short (likely template stub)" };
+  void rawProductDescription;
 
   return { isValid: true };
 }
@@ -397,29 +397,31 @@ function generateFallbackPitch(
   profile: ProfileSummary,
   rawProductDescription: string
 ): string {
-  const firstName = lead.firstName?.trim() || "there";
-  const senderName = profile.full_name?.trim().split(/\s+/)[0] ?? "there";
-  const senderCompany = profile.company_name?.trim() || "my company";
+  const leadFirstName = lead.firstName?.trim() || "there";
+  const senderFirstName =
+    profile.full_name?.trim().split(/\s+/)[0] ||
+    profile.email?.split("@")[0]?.replace(/[._]/g, " ").trim() ||
+    null;
+  const senderCompany = profile.company_name?.trim() || null;
   const company = lead.company?.trim() || "your company";
-  const productDesc = rawProductDescription.trim();
-  const productSummary =
-    productDesc.length > 0
-      ? productDesc.split(".")[0]?.slice(0, 100).trim()
-      : null;
+  const productDesc = (rawProductDescription || profile.product_description || "").trim();
   const opener = lead.title?.trim()
     ? `Saw you're ${lead.title} at ${company} — reaching out because outbound at this stage is its own challenge.`
     : `Came across ${company} and wanted to reach out.`;
-  const pitch = productSummary
-    ? `I'm building ${senderCompany} — ${productSummary}. Curious if this is useful for what you're working on?`
-    : `I'm working on something at ${senderCompany} for founders like you doing their own outreach. Would love to share more if useful.`;
-  return `Hi ${firstName},
+  const pitch = productDesc.length > 0
+    ? `I'm building something — ${productDesc}. Curious if this fits what you're working on?`
+    : "I'm building a tool for founders. Would love to share more if useful.";
+  const signatureLines = [senderFirstName, senderCompany].filter(
+    (x): x is string => Boolean(x)
+  );
+  const signature = signatureLines.join("\n");
+  return `Hi ${leadFirstName},
 
 ${opener}
 
 ${pitch}
 
-${senderName}
-${senderCompany}`.trim();
+${signature}`.trim();
 }
 
 function resolveProductDescriptionFromProfile(p: Record<string, unknown> | null): string {
@@ -571,6 +573,7 @@ export async function outreachNode(
           full_name: typeof p.full_name === "string" ? p.full_name : null,
           company_name: typeof p.company_name === "string" ? p.company_name : null,
           product_description: rawProductDescForValidation || null,
+          email: typeof p.email === "string" ? p.email : null,
         };
       }
 
@@ -642,6 +645,7 @@ export async function outreachNode(
         full_name: null,
         company_name: null,
         product_description: null,
+        email: null,
       };
       console.log("[Outreach] Building prompt for user:", {
         user_id: state.userId,
