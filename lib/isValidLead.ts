@@ -58,6 +58,7 @@ export function isValidLead(lead: ScoredLead): boolean {
     const hasName = (lead.name ?? "").trim().length > 0;
     const hasCompany = (lead.company ?? "").trim().length > 0;
     if (!hasName || !hasCompany) return false;
+    // Apollo rows may lack an email until enrichment or manual add — still listable.
     return true;
   }
 
