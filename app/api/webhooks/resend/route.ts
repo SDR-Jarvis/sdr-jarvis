@@ -113,6 +113,47 @@ async function handleEvent(payload: ResendWebhookPayload): Promise<NextResponse>
 
 // ─── Send-side events (delivered / opened / bounced / complained / replied) ─
 
+type OutboundForWebhook = {
+  id: string;
+  lead_id: string;
+  campaign_id: string;
+  user_id: string;
+  subject: string | null;
+  body: string;
+  sequence_step: number | null;
+  status: string;
+  opened_at: string | null;
+  resend_email_id: string | null;
+};
+
+async function findOutboundInteractionForSendEvent(
+  supabase: ReturnType<typeof createServiceClient>,
+  resendEmailId: string
+): Promise<OutboundForWebhook | null> {
+  const { data: byColumn } = await supabase
+    .from("interactions")
+    .select(
+      "id, lead_id, campaign_id, user_id, subject, body, sequence_step, status, opened_at, resend_email_id"
+    )
+    .eq("type", "email_outbound")
+    .eq("resend_email_id", resendEmailId)
+    .maybeSingle();
+
+  if (byColumn) return byColumn as OutboundForWebhook;
+
+  const { data: byMeta } = await supabase
+    .from("interactions")
+    .select(
+      "id, lead_id, campaign_id, user_id, subject, body, sequence_step, status, opened_at, resend_email_id"
+    )
+    .eq("type", "email_outbound")
+    .contains("metadata", { messageId: resendEmailId })
+    .limit(1)
+    .maybeSingle();
+
+  return (byMeta as OutboundForWebhook | null) ?? null;
+}
+
 async function handleSendEvent(event: ResendSendEvent): Promise<NextResponse> {
   const messageId = event.data.email_id;
   if (!messageId) {
@@ -120,14 +161,9 @@ async function handleSendEvent(event: ResendSendEvent): Promise<NextResponse> {
   }
 
   const supabase = createServiceClient();
-  const { data: interaction, error: findError } = await supabase
-    .from("interactions")
-    .select("id, lead_id, campaign_id, user_id, subject, body, sequence_step, status")
-    .contains("metadata", { messageId })
-    .limit(1)
-    .single();
+  const interaction = await findOutboundInteractionForSendEvent(supabase, messageId);
 
-  if (findError || !interaction) {
+  if (!interaction) {
     logger.warn("webhook", `No interaction found for send event ${messageId}`);
     return NextResponse.json({ received: true, matched: false });
   }
@@ -144,19 +180,32 @@ async function handleSendEvent(event: ResendSendEvent): Promise<NextResponse> {
     }
 
     case "email.opened": {
-      await supabase
-        .from("interactions")
-        .update({ opened_at: new Date().toISOString() })
-        .eq("id", interaction.id)
-        .eq("user_id", interaction.user_id);
+      const now = new Date().toISOString();
+      const isFirstOpen = !interaction.opened_at;
+      const shouldAdvanceStatus =
+        isFirstOpen && ["sent", "delivered"].includes(interaction.status);
 
-      await supabase.from("audit_log").insert({
-        user_id: interaction.user_id,
-        action: "email_opened",
-        resource_type: "interaction",
-        resource_id: interaction.id,
-        details: { lead_id: interaction.lead_id, message_id: messageId },
-      });
+      const openPatch: { opened_at?: string; status?: "opened" } = {};
+      if (isFirstOpen) openPatch.opened_at = now;
+      if (shouldAdvanceStatus) openPatch.status = "opened";
+
+      if (Object.keys(openPatch).length > 0) {
+        await supabase
+          .from("interactions")
+          .update(openPatch)
+          .eq("id", interaction.id)
+          .eq("user_id", interaction.user_id);
+      }
+
+      if (isFirstOpen) {
+        await supabase.from("audit_log").insert({
+          user_id: interaction.user_id,
+          action: "email_opened",
+          resource_type: "interaction",
+          resource_id: interaction.id,
+          details: { lead_id: interaction.lead_id, message_id: messageId },
+        });
+      }
       break;
     }
 
