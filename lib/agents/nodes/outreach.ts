@@ -568,6 +568,7 @@ export async function outreachNode(
   const llm = createLLMClient({ temperature: 0.75, maxTokens: 900 });
   const usableEnrichmentFacts = getUsableEnrichmentFacts(enrichment);
   const hasUsableEnrichment = hasUsablePersonalizationFacts(enrichment);
+  const prospectEnrichmentBlock = prospectEnrichmentToPromptBlock(enrichment);
 
   let systemPrompt: string;
   let userContent: string;
@@ -670,6 +671,7 @@ export async function outreachNode(
 
       systemPrompt = fillInitialOutreachPrompt({
         research,
+        prospect_enrichment: prospectEnrichmentBlock,
         sender_name: senderName,
         sender_company: senderCompany,
         product_block: productBlock,
@@ -722,6 +724,7 @@ export async function outreachNode(
       });
       systemPrompt = fillInitialOutreachPrompt({
         research,
+        prospect_enrichment: prospectEnrichmentBlock,
         sender_name: senderName,
         sender_company: senderCompany,
         product_block: buildProductBlock(null),
