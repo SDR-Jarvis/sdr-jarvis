@@ -843,7 +843,10 @@ export async function outreachNode(
       );
       console.log("[Outreach] Validation result:", validation);
       let retries = 0;
-      const conversation: { role: string; content: string }[] = [
+      const conversation: Array<{
+        role: "system" | "user" | "assistant";
+        content: string;
+      }> = [
         { role: "system", content: systemPrompt },
         { role: "user", content: fullUser },
       ];
