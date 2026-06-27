@@ -178,8 +178,8 @@ export default async function DashboardPage() {
               out.
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
-              <a href="/dashboard/leads/discover" className="jarvis-btn-primary text-xs">
-                Find leads
+              <a href="/dashboard/leads/import" className="jarvis-btn-primary text-xs">
+                Import leads
               </a>
               <a href="/dashboard/campaigns" className="jarvis-btn-ghost text-xs">
                 Open campaigns

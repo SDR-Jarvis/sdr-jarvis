@@ -117,6 +117,7 @@ export async function POST(req: NextRequest) {
     company: l.company,
     companyUrl: l.company_url,
     discoverySource: l.discovery_source ?? null,
+    enrichmentData: (l.enrichment_data as Record<string, unknown> | null) ?? null,
     githubUsername:
       (l.enrichment_data as { github_username?: string } | null)?.github_username ??
       null,

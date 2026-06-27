@@ -377,8 +377,8 @@ export default function LandingPage() {
           <StepCard
             num={1}
             icon={Target}
-            title="Find Your Prospects"
-            description="Search Hacker News and Product Hunt to discover founders — Jarvis scrapes their profiles and websites to find real email addresses."
+            title="Bring Your Prospects"
+            description="Import your own CSV or paste a short list with names, titles, companies, and URLs. Jarvis researches the people you already want to reach."
           />
           <StepCard
             num={2}

@@ -1,7 +1,9 @@
 /**
  * Lead discovery engine.
- * Set `APOLLO_API_KEY` in Vercel (or `.env.local`) for Apollo-backed discovery — one shared key for all users.
+ * Set `ENABLE_APOLLO_DISCOVERY=true` and `APOLLO_API_KEY` for Apollo-backed discovery.
+ * Apollo is intentionally opt-in; bring-your-own leads is the default path.
  */
+import { getApolloDiscoveryKey } from "@/lib/discover/config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ICPSignals } from "@/lib/icp/parser";
 import { hashIcpSignalsSha256 } from "@/lib/icp/hash";
@@ -505,7 +507,7 @@ export async function findLeads(
   }
 
   /** Global Apollo key only — per-user keys in Settings are reserved for future use. */
-  const apolloKey = process.env.APOLLO_API_KEY?.trim() || null;
+  const apolloKey = getApolloDiscoveryKey();
 
   const [githubResult, hnResult, phResult, apolloResult] = await Promise.allSettled([
     discoverGitHub(signals),

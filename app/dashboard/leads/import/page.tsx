@@ -19,8 +19,9 @@ import { IMPORT_INVITE, PRODUCT_TAGLINE } from "@/lib/product-copy";
 type CsvRow = Record<string, string>;
 
 const LEAD_FIELDS = [
+  { key: "full_name", label: "Full Name" },
   { key: "first_name", label: "First Name", required: true },
-  { key: "last_name", label: "Last Name", required: true },
+  { key: "last_name", label: "Last Name" },
   { key: "email", label: "Email" },
   { key: "linkedin_url", label: "LinkedIn URL" },
   { key: "title", label: "Title" },
@@ -28,15 +29,39 @@ const LEAD_FIELDS = [
   { key: "company_url", label: "Company URL" },
 ] as const;
 
+function parseDelimitedLine(line: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"' && next === '"') {
+      current += '"';
+      i++;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === "," && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  values.push(current.trim());
+  return values.map((v) => v.replace(/^"|"$/g, ""));
+}
+
 function parseCsv(text: string): { headers: string[]; rows: CsvRow[] } {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return { headers: [], rows: [] };
 
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  const headers = parseDelimitedLine(lines[0]);
   const rows: CsvRow[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
+    const values = parseDelimitedLine(lines[i]);
     const row: CsvRow = {};
     headers.forEach((h, idx) => {
       row[h] = values[idx] ?? "";
@@ -59,13 +84,14 @@ function autoMapColumns(
       (h) =>
         h === normalized ||
         h.includes(normalized) ||
+        (field.key === "full_name" && (h === "name" || h === "fullname" || h === "contact")) ||
         (field.key === "first_name" && (h === "firstname" || h === "first")) ||
         (field.key === "last_name" && (h === "lastname" || h === "last")) ||
         (field.key === "email" && h.includes("email")) ||
         (field.key === "linkedin_url" && (h.includes("linkedin") || h.includes("profile"))) ||
-        (field.key === "title" && (h === "title" || h === "jobtitle" || h === "role")) ||
+        (field.key === "title" && (h === "title" || h === "jobtitle" || h === "role" || h === "position")) ||
         (field.key === "company" && (h === "company" || h === "companyname" || h === "organization")) ||
-        (field.key === "company_url" && (h.includes("companyurl") || h.includes("website")))
+        (field.key === "company_url" && (h.includes("companyurl") || h.includes("website") || h === "url" || h === "domain"))
     );
     if (idx >= 0) {
       mapping[field.key] = csvHeaders[idx];
@@ -73,6 +99,13 @@ function autoMapColumns(
   });
 
   return mapping;
+}
+
+function splitName(fullName: string): { first: string; last: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "Contact", last: " " };
+  if (parts.length === 1) return { first: parts[0], last: " " };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
 }
 
 function extractEmailsFromPaste(text: string): string[] {
@@ -98,6 +131,103 @@ function companyGuessFromEmail(email: string): string {
   return domain.charAt(0).toUpperCase() + domain.slice(1).toLowerCase();
 }
 
+type LeadInsertRow = {
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  linkedin_url: string | null;
+  title: string | null;
+  company: string | null;
+  company_url: string | null;
+  discovery_source: string;
+  status: "new";
+};
+
+function normalizeUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^[\w.-]+\.[a-z]{2,}(?:\/.*)?$/i.test(trimmed)) return `https://${trimmed}`;
+  return null;
+}
+
+function leadRowFromMappedCsv(
+  row: CsvRow,
+  map: Record<string, string>
+): LeadInsertRow {
+  const mappedFullName = map.full_name ? row[map.full_name] ?? "" : "";
+  const fromFullName = splitName(mappedFullName);
+  const email = map.email ? (row[map.email] ?? "").trim().toLowerCase() : "";
+  const fromEmail = email ? namePartsFromEmail(email) : { first: "Contact", last: " " };
+  const firstName = (map.first_name ? row[map.first_name] : "")?.trim() || fromFullName.first || fromEmail.first;
+  const lastName = (map.last_name ? row[map.last_name] : "")?.trim() || fromFullName.last || fromEmail.last;
+
+  return {
+    first_name: firstName,
+    last_name: lastName,
+    email: email || null,
+    linkedin_url: map.linkedin_url ? normalizeUrl(row[map.linkedin_url] ?? "") : null,
+    title: map.title ? (row[map.title] || null) : null,
+    company: map.company ? (row[map.company] || null) : email ? companyGuessFromEmail(email) : null,
+    company_url: map.company_url ? normalizeUrl(row[map.company_url] ?? "") : null,
+    discovery_source: "manual",
+    status: "new",
+  };
+}
+
+function parsePastedLeadRows(text: string): LeadInsertRow[] {
+  const parsedCsv = parseCsv(text);
+  if (parsedCsv.headers.length > 0) {
+    const mapped = autoMapColumns(parsedCsv.headers);
+    if (mapped.full_name || mapped.first_name || mapped.email || mapped.company || mapped.company_url) {
+      return parsedCsv.rows.map((row) => leadRowFromMappedCsv(row, mapped));
+    }
+  }
+
+  const lineRows = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.includes("\t") ? line.split("\t").map((v) => v.trim()) : parseDelimitedLine(line))
+    .filter((cols) => cols.length > 1);
+
+  if (lineRows.length > 0) {
+    return lineRows.map((cols) => {
+      const email = cols.find((v) => /@/.test(v))?.toLowerCase() ?? "";
+      const urls = cols.map(normalizeUrl).filter((v): v is string => Boolean(v));
+      const linkedin = urls.find((u) => /linkedin\.com/i.test(u)) ?? null;
+      const companyUrl = urls.find((u) => !/linkedin\.com/i.test(u)) ?? null;
+      const { first, last } = splitName(cols[0] ?? "");
+      return {
+        first_name: first,
+        last_name: last,
+        email: email || null,
+        title: cols[1] && !/@/.test(cols[1]) ? cols[1] : null,
+        company: cols[2] && !/@|https?:\/\//i.test(cols[2]) ? cols[2] : email ? companyGuessFromEmail(email) : null,
+        company_url: companyUrl,
+        linkedin_url: linkedin,
+        discovery_source: "manual",
+        status: "new",
+      };
+    });
+  }
+
+  return extractEmailsFromPaste(text).map((email) => {
+    const { first, last } = namePartsFromEmail(email);
+    return {
+      first_name: first,
+      last_name: last,
+      email,
+      company: companyGuessFromEmail(email),
+      company_url: null,
+      linkedin_url: null,
+      title: null,
+      discovery_source: "manual",
+      status: "new",
+    };
+  });
+}
+
 export default function ImportLeadsPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -110,7 +240,7 @@ export default function ImportLeadsPage() {
   const [campaignId, setCampaignId] = useState("");
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ success: number; errors: number } | null>(null);
+  const [result, setResult] = useState<{ success: number; errors: number; skipped?: number } | null>(null);
   const [error, setError] = useState("");
   const [pasteText, setPasteText] = useState("");
   const [pasteLoading, setPasteLoading] = useState(false);
@@ -179,64 +309,49 @@ export default function ImportLeadsPage() {
       setError("Select a campaign first.");
       return;
     }
-    if (!mapping.first_name || !mapping.last_name) {
-      setError("First Name and Last Name mappings are required.");
+    if (!mapping.full_name && !mapping.first_name) {
+      setError("Map either Full Name or First Name before importing.");
+      return;
+    }
+    if (!mapping.company) {
+      setError("Map Company before importing.");
       return;
     }
 
     setLoading(true);
     setError("");
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setError("Not authenticated.");
+    const leadsToInsert = csvRows.map((row) => leadRowFromMappedCsv(row, mapping));
+    let data: {
+      error?: string;
+      added?: number;
+      skipped?: number;
+      rejected?: Array<{ index: number; reason: string }>;
+    } = {};
+    try {
+      const response = await fetch("/api/leads/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaign_id: campaignId, leads: leadsToInsert }),
+      });
+      data = (await response.json()) as typeof data;
+
+      if (!response.ok) {
+        setError(data.error ?? "Could not import leads.");
+        setLoading(false);
+        return;
+      }
+    } catch {
+      setError("Could not import leads. Check your connection and try again.");
       setLoading(false);
       return;
     }
 
-    const leadsToInsert = csvRows.map((row) => ({
-      campaign_id: campaignId,
-      user_id: user.id,
-      first_name: row[mapping.first_name] ?? "",
-      last_name: row[mapping.last_name] ?? "",
-      email: mapping.email ? row[mapping.email] || null : null,
-      linkedin_url: mapping.linkedin_url ? row[mapping.linkedin_url] || null : null,
-      title: mapping.title ? row[mapping.title] || null : null,
-      company: mapping.company ? row[mapping.company] || null : null,
-      company_url: mapping.company_url ? row[mapping.company_url] || null : null,
-      status: "new" as const,
-    }));
-
-    const { data, error: insertError } = await supabase
-      .from("leads")
-      .insert(leadsToInsert)
-      .select("id");
-
     setLoading(false);
 
-    if (insertError) {
-      setError(insertError.message);
-      return;
-    }
-
-    // Update campaign stats
-    await supabase
-      .from("campaigns")
-      .update({
-        stats: {
-          total_leads: (data?.length ?? 0),
-          researched: 0,
-          drafted: 0,
-          sent: 0,
-          replied: 0,
-          booked: 0,
-        },
-      })
-      .eq("id", campaignId);
-
-    setResult({ success: data?.length ?? 0, errors: csvRows.length - (data?.length ?? 0) });
+    const added = data.added ?? 0;
+    const rejected = data.rejected?.length ?? 0;
+    setResult({ success: added, errors: rejected, skipped: data.skipped ?? 0 });
   }
 
   async function handlePasteImport() {
@@ -246,48 +361,46 @@ export default function ImportLeadsPage() {
       setError("Select a campaign first.");
       return;
     }
-    const emails = extractEmailsFromPaste(pasteText);
-    if (emails.length === 0) {
-      setError("Paste at least one valid email address.");
-      return;
-    }
-
     setPasteLoading(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setError("Not authenticated.");
+    const rows = parsePastedLeadRows(pasteText);
+    if (rows.length === 0) {
+      setError("Paste at least one lead with a name, company, URL, or email.");
       setPasteLoading(false);
       return;
     }
 
-    const rows = emails.map((email) => {
-      const { first, last } = namePartsFromEmail(email);
-      return {
-        campaign_id: campaignId,
-        user_id: user.id,
-        first_name: first,
-        last_name: last,
-        email,
-        company: companyGuessFromEmail(email),
-        company_url: null,
-        linkedin_url: null,
-        title: null,
-        status: "new" as const,
-      };
-    });
+    let data: {
+      error?: string;
+      added?: number;
+      skipped?: number;
+      rejected?: Array<{ index: number; reason: string }>;
+    } = {};
+    try {
+      const response = await fetch("/api/leads/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaign_id: campaignId, leads: rows }),
+      });
+      data = (await response.json()) as typeof data;
 
-    const { data, error: insertError } = await supabase.from("leads").insert(rows).select("id");
-    setPasteLoading(false);
-
-    if (insertError) {
-      setError("Could not add those contacts. Try again or use a CSV.");
+      if (!response.ok) {
+        setError(data.error ?? "Could not add those contacts. Try again or use a CSV.");
+        setPasteLoading(false);
+        return;
+      }
+    } catch {
+      setError("Could not add those contacts. Check your connection and try again.");
+      setPasteLoading(false);
       return;
     }
+    setPasteLoading(false);
 
     setPasteText("");
-    setResult({ success: data?.length ?? 0, errors: emails.length - (data?.length ?? 0) });
+    setResult({
+      success: data.added ?? 0,
+      errors: data.rejected?.length ?? 0,
+      skipped: data.skipped ?? 0,
+    });
   }
 
   return (
@@ -316,6 +429,9 @@ export default function ImportLeadsPage() {
               successfully.
             </p>
             <p className="text-sm text-jarvis-muted">
+              {result.skipped || result.errors
+                ? `${result.skipped ?? 0} duplicate${result.skipped === 1 ? "" : "s"} skipped, ${result.errors} invalid row${result.errors === 1 ? "" : "s"} rejected. `
+                : ""}
               Ready for research. Head to{" "}
               <Link href="/dashboard/leads" className="text-jarvis-blue hover:underline">
                 Leads
@@ -335,14 +451,13 @@ export default function ImportLeadsPage() {
               <span className="text-xs font-semibold uppercase tracking-wider">Paste emails</span>
             </div>
             <p className="text-xs text-jarvis-muted/80">
-              One per line or separated by commas. We&apos;ll fill names from the address and guess a company from the
-              domain — you can refine later.
+              Paste rows with name, title, company, email, company URL, and LinkedIn URL. Headers are optional.
             </p>
             <textarea
               value={pasteText}
               onChange={(e) => setPasteText(e.target.value)}
               rows={6}
-              placeholder={"alex@acme.com\nfounder@startup.io"}
+              placeholder={"Jane Doe, VP Sales, Acme, jane@acme.com, https://acme.com, https://linkedin.com/in/janedoe\nSam Lee, Founder, BrightAI, https://bright.ai"}
               className="jarvis-input resize-none font-mono text-xs"
             />
             <div>
@@ -375,7 +490,7 @@ export default function ImportLeadsPage() {
               className="jarvis-btn-primary text-sm"
             >
               {pasteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {pasteLoading ? "Adding…" : "Add pasted emails"}
+              {pasteLoading ? "Adding…" : "Add pasted leads"}
             </button>
           </div>
 
@@ -405,7 +520,7 @@ export default function ImportLeadsPage() {
             />
             <p className="text-sm font-semibold text-white">Upload a CSV</p>
             <p className="mt-1 max-w-[220px] text-center text-xs text-jarvis-muted">
-              Best for spreadsheets. We&apos;ll match common column names for you.
+              Best for spreadsheets. Include name, title, company, email, company URL, and LinkedIn URL when available.
             </p>
             <p className="mt-3 text-xs font-medium text-jarvis-blue/90">Click or drag file here</p>
           </div>

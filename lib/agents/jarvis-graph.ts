@@ -24,6 +24,7 @@ async function approvalGateNode(
     return {
       currentLeadIndex: state.currentLeadIndex + 1,
       researchData: null,
+      prospectEnrichment: null,
       draftMessage: null,
       approvalStatus: "none",
       nextAgent: "supervisor",
@@ -47,7 +48,13 @@ async function approvalGateNode(
         body: draft.body,
         ai_draft_subject: draft.subject,
         ai_draft_body: draft.body,
-        metadata: { channel: draft.channel, personalization: draft.personalizationNotes },
+        metadata: {
+          channel: draft.channel,
+          personalization: draft.personalizationNotes,
+          confidence: draft.confidence ?? state.prospectEnrichment?.confidence ?? "low",
+          facts_used: draft.factsUsed ?? [],
+          prospect_enrichment: state.prospectEnrichment,
+        },
       })
       .select("id")
       .single();
@@ -71,6 +78,12 @@ async function approvalGateNode(
       .update({
         status: "pending_approval",
         research_data: state.researchData,
+        enrichment_data: lead.enrichmentData
+          ? {
+              ...lead.enrichmentData,
+              prospect_enrichment: state.prospectEnrichment,
+            }
+          : { prospect_enrichment: state.prospectEnrichment },
         enrichment_score: state.researchData?.score ?? null,
       })
       .eq("id", lead.id)
@@ -99,6 +112,7 @@ async function approvalGateNode(
   return {
     currentLeadIndex: state.currentLeadIndex + 1,
     researchData: null,
+    prospectEnrichment: null,
     draftMessage: null,
     approvalStatus: "none",
     nextAgent: "supervisor",

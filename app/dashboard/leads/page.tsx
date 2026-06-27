@@ -54,7 +54,7 @@ export default async function LeadsPage() {
           <p className="mt-1 text-sm text-jarvis-muted">
             {leads?.length
               ? `${leads.length} contact${leads.length > 1 ? "s" : ""} across campaigns`
-              : "Import or discover people to email — Jarvis handles the drafts."}
+              : "Import your prospects — Jarvis researches them and drafts for approval."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -74,7 +74,7 @@ export default async function LeadsPage() {
           <Users className="mb-4 h-10 w-10 text-jarvis-blue/30" />
           <h3 className="text-lg font-semibold text-white">No leads yet</h3>
           <p className="mt-2 max-w-md text-sm text-jarvis-muted">
-            Paste emails, upload a CSV, or describe your ICP and discover people. Then run the pipeline to get drafts.
+            Paste a list or upload a CSV with names, titles, companies, URLs, and emails when you have them. Then run the pipeline to get drafts.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-2">
             <Link href="/dashboard/leads/import" className="jarvis-btn-primary">

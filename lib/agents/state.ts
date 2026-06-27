@@ -1,5 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import { BaseMessage } from "@langchain/core/messages";
+import type { ProspectEnrichment } from "@/lib/enrichment/prospect";
 
 // ── Shared data shapes ────────────────────────────
 
@@ -14,6 +15,7 @@ export interface LeadData {
   companyUrl: string | null;
   discoverySource?: string | null;
   githubUsername?: string | null;
+  enrichmentData?: Record<string, unknown> | null;
 }
 
 export interface ResearchData {
@@ -43,6 +45,8 @@ export interface DraftMessage {
   body: string;
   channel: "email" | "linkedin";
   personalizationNotes: string;
+  confidence?: "high" | "medium" | "low";
+  factsUsed?: string[];
 }
 
 export interface PreviousEmail {
@@ -96,6 +100,11 @@ export const JarvisState = Annotation.Root({
   }),
 
   researchData: Annotation<ResearchData | null>({
+    reducer: (_, y) => y ?? null,
+    default: () => null,
+  }),
+
+  prospectEnrichment: Annotation<ProspectEnrichment | null>({
     reducer: (_, y) => y ?? null,
     default: () => null,
   }),

@@ -46,6 +46,7 @@ export async function supervisorNode(
     return {
       currentLeadIndex: state.leads.length,
       researchData: null,
+      prospectEnrichment: null,
       draftMessage: null,
       approvalStatus: "none",
       stopRequested: true,
@@ -60,19 +61,10 @@ export async function supervisorNode(
 
   const name = `${lead.firstName} ${lead.lastName}`;
 
-  // Skip leads without email — can't send outreach
+  // Leads without email can still be researched and drafted; approval will block sending
+  // until the user adds an address.
   if (!lead.email) {
-    logger.warn("supervisor", `[${idx}/${total}] ${name} — no email address, skipping`);
-    return {
-      currentLeadIndex: state.currentLeadIndex + 1,
-      researchData: null,
-      draftMessage: null,
-      approvalStatus: "none",
-      nextAgent: "supervisor",
-      messages: [
-        new AIMessage(`[${idx}/${total}] Skipping ${name} — no email address on file. Can't send outreach without one.`),
-      ],
-    };
+    logger.info("supervisor", `[${idx}/${total}] ${name} — no email address, drafting for review only`);
   }
 
   // Needs research
@@ -96,6 +88,12 @@ export async function supervisorNode(
         .update({
           status: "researched",
           research_data: state.researchData,
+          enrichment_data: lead.enrichmentData
+            ? {
+                ...lead.enrichmentData,
+                prospect_enrichment: state.prospectEnrichment,
+              }
+            : { prospect_enrichment: state.prospectEnrichment },
           enrichment_score: state.researchData.score,
         })
         .eq("id", lead.id)
@@ -106,6 +104,7 @@ export async function supervisorNode(
     return {
       currentLeadIndex: state.currentLeadIndex + 1,
       researchData: null,
+      prospectEnrichment: null,
       draftMessage: null,
       approvalStatus: "none",
       nextAgent: "supervisor",
@@ -148,6 +147,7 @@ export async function supervisorNode(
     return {
       currentLeadIndex: state.currentLeadIndex + 1,
       researchData: null,
+      prospectEnrichment: null,
       draftMessage: null,
       approvalStatus: "none",
       nextAgent: "supervisor",
@@ -163,6 +163,7 @@ export async function supervisorNode(
     return {
       currentLeadIndex: state.currentLeadIndex + 1,
       researchData: null,
+      prospectEnrichment: null,
       draftMessage: null,
       approvalStatus: "none",
       nextAgent: "supervisor",

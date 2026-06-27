@@ -4,6 +4,12 @@ import { logger } from "@/lib/logger";
 import { appendSignaturePlain } from "@/lib/email/signature";
 import { createServiceClient } from "@/lib/supabase/server";
 import { isPipelineRunCancelled } from "@/lib/agents/pipeline-cancel";
+import {
+  getUsableEnrichmentFacts,
+  hasUsablePersonalizationFacts,
+  prospectEnrichmentToPromptBlock,
+  type ProspectEnrichment,
+} from "@/lib/enrichment/prospect";
 import type { JarvisStateType, DraftMessage, ResearchData } from "../state";
 
 function buildProductBlock(profile: Record<string, unknown> | null): string {
@@ -88,8 +94,15 @@ Like a peer, not a salesperson.
 {product_block}
 
 PITCH VS OPENER:
-- PART 1 (opener) uses RESEARCH about the lead — be specific when research is strong.
+- PART 1 (opener) uses STRUCTURED PROSPECT ENRICHMENT first, then research.
 - PART 2 (pitch) must follow PRODUCT CONTEXT above only — the sender's real product, not a generic outreach stack.
+
+PERSONALIZATION SOURCE OF TRUTH:
+- The opener MUST reference at least one specific, true fact from STRUCTURED PROSPECT ENRICHMENT.
+- The first line of the email MUST reference selectedOpenerFact or one usable enrichment fact, tied directly to the prospect/company.
+- Use selectedOpenerFact first, then facts where usableInOpener is true. If those are empty, mark personalizationNotes as "low confidence — needs review" and do not fake specificity.
+- The opening line must tie to something specific about THEM: their company, product, role, launch, hiring, customer, pricing, or positioning.
+- Never write a generic templated opener when enrichment is thin.
 
 You may NEVER claim the sender's product does any of these invented things:
 - Manages microservices
@@ -239,7 +252,10 @@ FORBIDDEN PHRASES (do not use under any circumstance):
 OUTPUT FORMAT — valid JSON only, nothing else:
 {
   "subject": "lowercase short subject",
-  "body": "opener\\n\\npitch with cta"
+  "body": "opener\\n\\npitch with cta",
+  "confidence": "high|medium|low",
+  "personalizationNotes": "what sourced fact was used, or low confidence — needs review",
+  "factsUsed": ["exact enrichment fact(s) referenced"]
 }
 
 NEVER include compliance text in output.
@@ -260,6 +276,9 @@ RESEARCH (use this for the opener):
 - Research depth: {research_depth}
 - Company focus: {company_focus}
 - Fallback used: {fallback_used}
+
+STRUCTURED PROSPECT ENRICHMENT (primary source for the opener):
+{prospect_enrichment}
 
 SENDER:
 - Name: {sender_name}
@@ -395,7 +414,8 @@ function validateProductPitch(
 function generateFallbackPitch(
   lead: JarvisStateType["leads"][number],
   profile: ProfileSummary,
-  rawProductDescription: string
+  rawProductDescription: string,
+  enrichment: ProspectEnrichment | null
 ): string {
   const leadFirstName = lead.firstName?.trim() || "there";
   const senderFirstName =
@@ -405,9 +425,14 @@ function generateFallbackPitch(
   const senderCompany = profile.company_name?.trim() || null;
   const company = lead.company?.trim() || "your company";
   const productDesc = (rawProductDescription || profile.product_description || "").trim();
-  const opener = lead.title?.trim()
-    ? `Saw you're ${lead.title} at ${company} — reaching out because outbound at this stage is its own challenge.`
-    : `Came across ${company} and wanted to reach out.`;
+  const fact =
+    enrichment?.selectedOpenerFact?.text?.trim() ??
+    getUsableEnrichmentFacts(enrichment)[0]?.trim();
+  const opener = fact
+    ? `${company} caught my eye for ${fact.charAt(0).toLowerCase()}${fact.slice(1)}.`
+    : lead.title?.trim()
+      ? `Saw you're ${lead.title} at ${company} — I couldn't verify a specific recent signal, so flagging this for review.`
+      : `Came across ${company} — I couldn't verify a specific recent signal, so flagging this for review.`;
   const pitch = productDesc.length > 0
     ? `I'm building something — ${productDesc}. Curious if this fits what you're working on?`
     : "I'm building a tool for founders. Would love to share more if useful.";
@@ -424,6 +449,37 @@ ${pitch}
 ${signature}`.trim();
 }
 
+function attachDraftMetadata(params: {
+  draft: DraftMessage;
+  research: ResearchData;
+  enrichment: ProspectEnrichment | null;
+  usableEnrichmentFacts: string[];
+  hasUsableEnrichment: boolean;
+}): DraftMessage {
+  const factsUsed =
+    Array.isArray(params.draft.factsUsed) && params.draft.factsUsed.length
+      ? params.draft.factsUsed
+      : [
+          params.enrichment?.selectedOpenerFact?.text,
+          ...params.usableEnrichmentFacts,
+        ].filter((fact): fact is string => Boolean(fact)).slice(0, 3);
+
+  const confidence =
+    params.draft.confidence ??
+    params.enrichment?.confidence ??
+    params.research.confidence ??
+    "low";
+
+  return {
+    ...params.draft,
+    confidence: params.hasUsableEnrichment ? confidence : "low",
+    factsUsed: params.hasUsableEnrichment ? factsUsed : [],
+    personalizationNotes: params.hasUsableEnrichment
+      ? params.draft.personalizationNotes
+      : `low confidence — needs review: ${params.draft.personalizationNotes}`,
+  };
+}
+
 function resolveProductDescriptionFromProfile(p: Record<string, unknown> | null): string {
   const pd =
     typeof p?.product_description === "string" ? p.product_description.trim() : "";
@@ -432,6 +488,7 @@ function resolveProductDescriptionFromProfile(p: Record<string, unknown> | null)
 
 function fillInitialOutreachPrompt(params: {
   research: ResearchData;
+  prospect_enrichment: string;
   sender_name: string;
   sender_company: string;
   product_block: string;
@@ -454,6 +511,7 @@ function fillInitialOutreachPrompt(params: {
     .replaceAll("{fallback_used}", String(r.fallback_used ?? false))
     .replaceAll("{research_depth}", r.research_depth ?? "surface")
     .replaceAll("{company_focus}", r.company_focus ?? r.companyInfo ?? "")
+    .replaceAll("{prospect_enrichment}", params.prospect_enrichment)
     .replaceAll("{sender_name}", params.sender_name)
     .replaceAll("{sender_company}", params.sender_company)
     .replaceAll("{product_one_liner}", params.product_one_liner)
@@ -471,6 +529,7 @@ export async function outreachNode(
 ): Promise<Partial<JarvisStateType>> {
   const lead = state.leads[state.currentLeadIndex];
   const research = state.researchData;
+  const enrichment = state.prospectEnrichment;
 
   if (!lead || !research) {
     logger.error("outreach", "Missing lead or research data");
@@ -496,7 +555,7 @@ export async function outreachNode(
   }
 
   const name = `${lead.firstName} ${lead.lastName}`;
-  const isFollowUp = state.sequenceStep > 1 && state.previousEmail;
+  const isFollowUp = state.sequenceStep > 1 && Boolean(state.previousEmail);
   let profileFallback: ProfileSummary = {};
 
   logger.step(
@@ -507,6 +566,8 @@ export async function outreachNode(
   );
 
   const llm = createLLMClient({ temperature: 0.75, maxTokens: 900 });
+  const usableEnrichmentFacts = getUsableEnrichmentFacts(enrichment);
+  const hasUsableEnrichment = hasUsablePersonalizationFacts(enrichment);
 
   let systemPrompt: string;
   let userContent: string;
@@ -678,6 +739,36 @@ export async function outreachNode(
     }
   }
 
+  if (!isFollowUp && !hasUsableEnrichment) {
+    const draft: DraftMessage = {
+      subject: "quick question",
+      body: generateFallbackPitch(
+        lead,
+        profileFallback,
+        rawProductDescForValidation,
+        enrichment
+      ),
+      channel: "email",
+      personalizationNotes:
+        "low confidence — needs review: no usable sourced enrichment fact was found for the opener.",
+      confidence: "low",
+      factsUsed: [],
+    };
+
+    logger.warn(
+      "outreach",
+      `No usable enrichment fact for ${name}; queuing low-confidence draft for review`
+    );
+
+    return buildDraftResult(
+      lead.firstName,
+      draft,
+      state.complianceEmailSuffix ?? "",
+      state.senderDisplayName ?? "",
+      { appendSignatureBlock }
+    );
+  }
+
   let styleBlock = "";
   if (isFollowUp) {
     try {
@@ -736,6 +827,13 @@ export async function outreachNode(
       draft.personalizationNotes =
         research.opener_signal ?? research.talkingPoints[0] ?? "Research-led angle.";
     }
+    draft = attachDraftMetadata({
+      draft,
+      research,
+      enrichment,
+      usableEnrichmentFacts,
+      hasUsableEnrichment: isFollowUp || hasUsableEnrichment,
+    });
 
     if (!isFollowUp) {
       let lastText = text;
@@ -775,6 +873,13 @@ export async function outreachNode(
           draft.personalizationNotes =
             research.opener_signal ?? research.talkingPoints[0] ?? "Research-led angle.";
         }
+        draft = attachDraftMetadata({
+          draft,
+          research,
+          enrichment,
+          usableEnrichmentFacts,
+          hasUsableEnrichment: isFollowUp || hasUsableEnrichment,
+        });
         validation = validateProductPitch(
           draft.body,
           rawProductDescForValidation || null
@@ -788,8 +893,16 @@ export async function outreachNode(
         draft.body = generateFallbackPitch(
           lead,
           profileFallback,
-          rawProductDescForValidation
+          rawProductDescForValidation,
+          enrichment
         );
+        draft = attachDraftMetadata({
+          draft,
+          research,
+          enrichment,
+          usableEnrichmentFacts,
+          hasUsableEnrichment: true,
+        });
       }
     }
 
@@ -828,6 +941,13 @@ export async function outreachNode(
           draft.personalizationNotes =
             research.opener_signal ?? research.talkingPoints[0] ?? "Research-led angle.";
         }
+        draft = attachDraftMetadata({
+          draft,
+          research,
+          enrichment,
+          usableEnrichmentFacts,
+          hasUsableEnrichment: isFollowUp || hasUsableEnrichment,
+        });
         if (!isFollowUp) {
           const v = validateProductPitch(
             draft.body,
@@ -843,8 +963,16 @@ export async function outreachNode(
             draft.body = generateFallbackPitch(
               lead,
               profileFallback,
-              rawProductDescForValidation
+              rawProductDescForValidation,
+              enrichment
             );
+            draft = attachDraftMetadata({
+              draft,
+              research,
+              enrichment,
+              usableEnrichmentFacts,
+              hasUsableEnrichment: true,
+            });
           }
         }
         logger.success("outreach", `Revised draft for ${name}: "${draft.subject}"`);
@@ -878,8 +1006,16 @@ export async function outreachNode(
         draft.body = generateFallbackPitch(
           lead,
           profileFallback,
-          rawProductDescForValidation
+          rawProductDescForValidation,
+          enrichment
         );
+        draft = attachDraftMetadata({
+          draft,
+          research,
+          enrichment,
+          usableEnrichmentFacts,
+          hasUsableEnrichment: true,
+        });
       }
     }
 

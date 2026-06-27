@@ -7,6 +7,12 @@ import {
   searchLinkedIn,
 } from "@/lib/agents/tools";
 import { isPipelineRunCancelled } from "@/lib/agents/pipeline-cancel";
+import { createServiceClient } from "@/lib/supabase/server";
+import {
+  enrichProspectForLead,
+  prospectEnrichmentToPromptBlock,
+  hasUsablePersonalizationFacts,
+} from "@/lib/enrichment/prospect";
 import type { JarvisStateType, ResearchData } from "../state";
 
 const RESEARCHER_SYSTEM_PROMPT = `
@@ -303,6 +309,14 @@ export async function researcherNode(
   const name = `${lead.firstName} ${lead.lastName}`;
   logger.step("researcher", `Starting research on ${name}${lead.company ? ` (${lead.company})` : ""}`);
 
+  const supabase = createServiceClient();
+  const { enrichment } = await enrichProspectForLead({
+    supabase,
+    userId: state.userId,
+    campaignId: state.campaignId,
+    lead,
+  });
+
   const sources = await gatherResearchSources(lead);
   if (sources.length === 0) {
     logger.info("researcher", `No deep sources found for ${name}, using LinkedIn search fallback`);
@@ -336,10 +350,13 @@ Name: ${name}
 Title: ${lead.title ?? ""}
 Company: ${lead.company ?? ""}
 
+STRUCTURED PROSPECT ENRICHMENT:
+${prospectEnrichmentToPromptBlock(enrichment)}
+
 Research sources collected:
 ${sourcesText || "No sources available — use fallback."}
 
-Find ONE specific, non-obvious signal worth referencing in a cold email. Return JSON.`,
+Find ONE specific, non-obvious signal worth referencing in a cold email. Prefer the structured enrichment facts when they are usable. Return JSON.`,
       },
     ]);
 
@@ -354,11 +371,17 @@ Find ONE specific, non-obvious signal worth referencing in a cold email. Return 
       return {
         errors: ["Researcher: LLM returned non-JSON response"],
         researchData: buildFallbackResearch(lead),
+        prospectEnrichment: enrichment,
       };
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
     const research = mergeResearchOutput(parsed, lead);
+    if (!hasUsablePersonalizationFacts(enrichment)) {
+      research.confidence = "low";
+      research.fallback_used = true;
+      research.research_depth = "surface";
+    }
     if (research.opener_signal && isSignalWeak(research.opener_signal)) {
       console.warn("[Research] Weak signal detected, marking fallback");
       research.confidence = "low";
@@ -372,6 +395,7 @@ Find ONE specific, non-obvious signal worth referencing in a cold email. Return 
 
     return {
       researchData: research,
+      prospectEnrichment: enrichment,
       messages: [
         new AIMessage(
           `Research on ${lead.firstName} done. Score: ${research.score}/100. ` +
@@ -388,6 +412,7 @@ Find ONE specific, non-obvious signal worth referencing in a cold email. Return 
     return {
       errors: [`Researcher synthesis error: ${msg}`],
       researchData: buildFallbackResearch(lead),
+      prospectEnrichment: enrichment,
       messages: [
         new AIMessage(
           `Hit a wall synthesizing research on ${lead.firstName}. Proceeding with basic profile data.`

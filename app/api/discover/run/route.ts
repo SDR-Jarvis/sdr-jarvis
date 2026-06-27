@@ -3,11 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { parseICP } from "@/lib/icp/parser";
 import { extractICPWithLLM } from "@/lib/icp/llm-extract";
 import { findLeads } from "@/lib/discover/engine";
+import { getApolloDiscoveryKey, isApolloDiscoveryEnabled } from "@/lib/discover/config";
 import { scoreAndSortLeads, type ScoredLead } from "@/lib/icp/scorer";
 import { isValidLead } from "@/lib/isValidLead";
 
-if (!process.env.APOLLO_API_KEY) {
-  console.warn("Apollo API key missing — discovery may be limited.");
+if (isApolloDiscoveryEnabled() && !getApolloDiscoveryKey()) {
+  console.warn("ENABLE_APOLLO_DISCOVERY=true but APOLLO_API_KEY is missing.");
 }
 
 export const runtime = "nodejs";
@@ -16,8 +17,8 @@ export const runtime = "nodejs";
  * POST /api/discover/run
  * Body: { icpDescription: string, bypassCache?: boolean }
  *
- * Optional Apollo People Search uses `APOLLO_API_KEY` from server environment
- * (e.g. set in Vercel) — one shared key for all discovery runs.
+ * Optional Apollo People Search requires ENABLE_APOLLO_DISCOVERY=true plus
+ * APOLLO_API_KEY. BYO/imported leads are the default path.
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
   console.log("Discovery sources active:", {
     github: true,
     productHunt: true,
-    apollo: !!process.env.APOLLO_API_KEY,
+    apollo: !!getApolloDiscoveryKey(),
   });
 
   const signals = await parseICP(icpDescription, extractICPWithLLM);

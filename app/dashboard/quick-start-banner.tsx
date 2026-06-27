@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Zap, Compass } from "lucide-react";
+import { Zap, Upload } from "lucide-react";
 import { TestEmailButton } from "./test-email-button";
 
 export function QuickStartBanner({ show }: { show: boolean }) {
@@ -18,11 +18,11 @@ export function QuickStartBanner({ show }: { show: boolean }) {
       <div className="flex flex-wrap items-center gap-2">
         <TestEmailButton compact />
         <Link
-          href="/dashboard/leads/discover"
+          href="/dashboard/leads/import"
           className="inline-flex items-center gap-1.5 rounded-md border border-jarvis-border px-3 py-1.5 text-xs font-medium text-jarvis-muted transition-colors hover:border-jarvis-blue/30 hover:text-white"
         >
-          <Compass className="h-3.5 w-3.5" />
-          Discover
+          <Upload className="h-3.5 w-3.5" />
+          Import leads
         </Link>
         <Link
           href="/dashboard/campaigns/new"

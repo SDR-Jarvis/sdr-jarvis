@@ -66,8 +66,8 @@ const CHECKLIST: ChecklistItem[] = [
   {
     id: "leads",
     label: "Add 3–5 leads",
-    description: "Import CSV or Discover — start small to validate quality.",
-    href: "/dashboard/leads/discover",
+    description: "Import your own prospects — start small to validate quality.",
+    href: "/dashboard/leads/import",
     icon: Upload,
     check: (d) => d.hasLeads,
   },
